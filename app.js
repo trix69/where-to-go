@@ -4,7 +4,7 @@
  * No framework, no build step, no network beyond the transit lookup.
  */
 
-import { getTrip, mapsUrl, MOCK } from "./transit.js";
+import { getTrip, mapsUrl, usingMock } from "./transit.js";
 
 const STORE = "whereToGo.v1";
 
@@ -28,10 +28,12 @@ const COPY = {
     looking: "Checking…",
     demo: "SAMPLE DATA — no live transit yet",
     trip: (t) =>
-      `${t.mode === "train" ? "Train" : "Bus"} ${t.line} in ${t.waitMin} min, ${t.durationMin} min to get there.`,
+      `${t.mode in COPY.en.modes ? COPY.en.modes[t.mode] : "Bus"} ${t.line} in ${t.waitMin} min, ${t.durationMin} min to get there.`,
+    modes: { bus: "Bus", train: "Train", ferry: "Ferry", lightrail: "Light rail", metro: "Metro", coach: "Coach" },
     failed: "No answer right now.",
     stillGo: "Open in Maps anyway",
     needAddress: "Add an address first.",
+    noOrigin: "Add a starting place first.",
   },
   "zh-Hans": {
     ask: "想去哪儿?",
@@ -47,10 +49,12 @@ const COPY = {
     openMaps: "打开地图",
     looking: "正在查询…",
     demo: "示例数据 — 还没接实时公交",
-    trip: (t) => `坐${t.mode === "train" ? "火车" : "公交"}${t.line}路，${t.waitMin}分钟后有车，路上大约${t.durationMin}分钟。`,
+    trip: (t) => `坐${COPY["zh-Hans"].modes[t.mode] || "公交"}${t.line}路，${t.waitMin}分钟后有车，路上大约${t.durationMin}分钟。`,
+    modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },
     failed: "现在查不到。",
     stillGo: "还是打开地图",
     needAddress: "请先填地址。",
+    noOrigin: "请先填出发点。",
   },
   "zh-Hant": {
     ask: "想去哪兒?",
@@ -66,10 +70,12 @@ const COPY = {
     openMaps: "開啟地圖",
     looking: "正在查詢…",
     demo: "範例資料 — 還沒接實時交通",
-    trip: (t) => `搭${t.mode === "train" ? "火車" : "公車"}${t.line}路，${t.waitMin}分鐘後有車，路上大約${t.durationMin}分鐘。`,
+    trip: (t) => `搭${COPY["zh-Hant"].modes[t.mode] || "公車"}${t.line}路，${t.waitMin}分鐘後有車，路上大約${t.durationMin}分鐘。`,
+    modes: { bus: "公車", train: "火車", ferry: "渡輪", lightrail: "輕軌", metro: "捷運", coach: "巴士" },
     failed: "現在查不到。",
     stillGo: "還是開啟地圖",
     needAddress: "請先填地址。",
+    noOrigin: "請先填出發點。",
   },
 };
 
@@ -179,6 +185,31 @@ function show(which) {
 /* ---------- the answer ---------- */
 
 let lookSeq = 0;
+let geoAsked = null;
+
+/** Where the traveller is starting from: the device, else the place called Home. Asked once per session. */
+function askLocation() {
+  if (!geoAsked) {
+    geoAsked = new Promise((resolve) => {
+      if (!navigator.geolocation) return resolve(null);
+      const done = setTimeout(() => resolve(null), 5000);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { clearTimeout(done); resolve({ coord: { lng: pos.coords.longitude, lat: pos.coords.latitude } }); },
+        () => { clearTimeout(done); resolve(null); },
+        { timeout: 5000, maximumAge: 120000, enableHighAccuracy: false },
+      );
+    });
+  }
+  return geoAsked;
+}
+
+async function originFor(place) {
+  const loc = await askLocation();
+  if (loc) return loc;
+  const home = state.places.find((p) => p.id === "home" && p.address);
+  if (home && home.id !== place.id) return { address: home.address };
+  return null;
+}
 
 async function openAnswer(place) {
   const c = t();
@@ -190,22 +221,33 @@ async function openAnswer(place) {
   el.closeSheet.textContent = c.back;
   const seq = ++lookSeq;
 
+  let mode = "transit";
   try {
-    const trip = await getTrip(place);
+    const origin = await originFor(place);
     if (seq !== lookSeq) return;
-    el.summary.textContent = c.trip(trip);
-    if (MOCK) {
-      el.stamp.textContent = c.demo;
-      el.stamp.dataset.kind = "demo";
-      el.stamp.hidden = false;
+    if (!origin) {
+      el.summary.textContent = c.noOrigin;
+      el.go.textContent = c.stillGo;
+    } else {
+      const trip = await getTrip(place, { origin });
+      if (seq !== lookSeq) return;
+      mode = trip.mode;
+      el.summary.textContent = c.trip(trip);
+      // Anything that is not the live provider gets said out loud, in the answer card.
+      if (trip.provider !== "tfnsw") {
+        el.stamp.textContent = c.demo;
+        el.stamp.dataset.kind = "demo";
+        el.stamp.hidden = false;
+      }
     }
   } catch (err) {
     if (seq !== lookSeq) return;
     // No answer is still a decision the user can act on: hand off to the maps app regardless.
-    el.summary.textContent = err && err.message === "no-address" ? c.needAddress : c.failed;
+    const why = err && err.message;
+    el.summary.textContent = why === "no-address" ? c.needAddress : why === "no-origin" ? c.noOrigin : c.failed;
     el.go.textContent = c.stillGo;
   }
-  el.go.href = mapsUrl(place, "transit");
+  el.go.href = mapsUrl(place, mode);
 }
 
 /* ---------- places (helper screen) ---------- */
