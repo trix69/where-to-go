@@ -37,11 +37,16 @@ def run(cmd, cwd=ROOT, check=True, capture=True):
 
 
 def exists(repo):
+    if DRY:
+        return False  # so a dry run prints the create step for both repos
     return subprocess.run([GH, "repo", "view", f"{OWNER}/{repo}"], capture_output=True).returncode == 0
 
 
 def enable_pages(repo):
     # Pages from the default branch root: there is no build step, so the source is the site.
+    if DRY:
+        print(f"  would enable Pages on {OWNER}/{repo} from main /")
+        return
     p = subprocess.run(
         [GH, "api", "-X", "POST", f"repos/{OWNER}/{repo}/pages",
          "-f", "source[branch]=main", "-f", "source[path]=/"],
@@ -52,14 +57,18 @@ def enable_pages(repo):
 
 
 def main():
-    if subprocess.run([GH, "auth", "status"], capture_output=True).returncode != 0:
+    if not DRY and subprocess.run([GH, "auth", "status"], capture_output=True).returncode != 0:
         sys.exit("gh is not authenticated. Run: gh auth login  (or export GH_TOKEN=...)")
+    if DRY:
+        print("dry run — nothing below is executed\n")
 
     print(f"live repo {OWNER}/{LIVE}")
     if not exists(LIVE):
         run([GH, "repo", "create", f"{OWNER}/{LIVE}", "--public",
              "--description", "Where To Go · 想去哪儿 — one tap from your saved places to a transit answer"])
-    if not run(["git", "remote"], check=False):
+    if DRY:
+        run(["git", "remote", "add", "origin", f"https://github.com/{OWNER}/{LIVE}.git"])
+    elif not run(["git", "remote"], check=False):
         run(["git", "remote", "add", "origin", f"https://github.com/{OWNER}/{LIVE}.git"])
     run(["git", "push", "-u", "origin", "main"])
     enable_pages(LIVE)
