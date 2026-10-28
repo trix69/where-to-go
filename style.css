@@ -80,9 +80,9 @@ body {
 
 .gear {
   flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
-  padding: 12px;
+  width: 56px;
+  height: 56px;
+  padding: 13px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--card);
@@ -202,6 +202,9 @@ body {
   cursor: pointer;
 }
 
+/* Same trap as the sheets: `display:flex` beats the hidden attribute. */
+.go[hidden] { display: none; }
+
 .back {
   display: block;
   width: 100%;
@@ -220,7 +223,7 @@ body {
 .lang { display: flex; gap: 10px; margin-bottom: 20px; }
 .lang button {
   flex: 1;
-  min-height: 52px;
+  min-height: 56px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--card);
@@ -246,7 +249,7 @@ body {
 .place input {
   width: 100%;
   margin-top: 4px;
-  min-height: 46px;
+  min-height: 56px;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -259,7 +262,7 @@ body {
 /* An empty text input defaults to ~20 characters wide and was stealing the name column. */
 .place .glyph { width: 5.5rem; }
 .place .del {
-  min-height: 46px;
+  min-height: 56px;
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: 10px;

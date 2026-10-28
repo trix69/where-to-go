@@ -49,7 +49,14 @@ const COPY = {
     openMaps: "打开地图",
     looking: "正在查询…",
     demo: "示例数据 — 还没接实时公交",
-    trip: (t) => `坐${COPY["zh-Hans"].modes[t.mode] || "公交"}${t.line}路，${t.waitMin}分钟后有车，路上大约${t.durationMin}分钟。`,
+    // "路" is the bus-route suffix; a train line takes "号线", and ferry/light-rail numbers take neither.
+    trip: (t) => {
+      const word = COPY["zh-Hans"].modes[t.mode] || "公交";
+      const ride = t.mode === "train" ? `${t.line}号线`
+        : t.mode === "bus" || t.mode === "coach" ? `${word}${t.line}路`
+        : `${word}${t.line}`;
+      return `坐${ride}，${t.waitMin}分钟后有车，路上大约${t.durationMin}分钟。`;
+    },
     modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },
     failed: "现在查不到。",
     stillGo: "还是打开地图",
@@ -70,7 +77,14 @@ const COPY = {
     openMaps: "開啟地圖",
     looking: "正在查詢…",
     demo: "範例資料 — 還沒接實時交通",
-    trip: (t) => `搭${COPY["zh-Hant"].modes[t.mode] || "公車"}${t.line}路，${t.waitMin}分鐘後有車，路上大約${t.durationMin}分鐘。`,
+    // Traditional form of the same rule: 號線 for a train line, 路 only for buses.
+    trip: (t) => {
+      const word = COPY["zh-Hant"].modes[t.mode] || "公車";
+      const ride = t.mode === "train" ? `${t.line}號線`
+        : t.mode === "bus" || t.mode === "coach" ? `${word}${t.line}路`
+        : `${word}${t.line}`;
+      return `搭${ride}，${t.waitMin}分鐘後有車，路上大約${t.durationMin}分鐘。`;
+    },
     modes: { bus: "公車", train: "火車", ferry: "渡輪", lightrail: "輕軌", metro: "捷運", coach: "巴士" },
     failed: "現在查不到。",
     stillGo: "還是開啟地圖",
@@ -217,11 +231,21 @@ async function openAnswer(place) {
   el.sheetTitle.textContent = nameOf(place);
   el.summary.textContent = c.looking;
   el.stamp.hidden = true;
-  el.go.textContent = c.openMaps;
-  el.closeSheet.textContent = c.back;
   const seq = ++lookSeq;
-
   let mode = "transit";
+  el.closeSheet.textContent = c.back;
+  // The hand-off link does not depend on the trip, so it is set before the lookup: an
+  // "Open in Maps" button still pointing at "#" during a slow fetch is a trap. A place with no
+  // address has nowhere to hand off to, so that button is simply not offered.
+  el.go.href = mapsUrl(place, mode);
+  el.go.textContent = c.openMaps;
+  el.go.hidden = !place.address;
+  if (!place.address) {
+    // Nothing to hand off to, and nothing to look up: say the one useful thing and stop.
+    el.summary.textContent = c.needAddress;
+    return;
+  }
+
   try {
     const origin = await originFor(place);
     if (seq !== lookSeq) return;
@@ -242,11 +266,13 @@ async function openAnswer(place) {
     }
   } catch (err) {
     if (seq !== lookSeq) return;
-    // No answer is still a decision the user can act on: hand off to the maps app regardless.
+    // No answer is still a decision the user can act on — unless there is no destination at all.
     const why = err && err.message;
     el.summary.textContent = why === "no-address" ? c.needAddress : why === "no-origin" ? c.noOrigin : c.failed;
     el.go.textContent = c.stillGo;
+    el.go.hidden = !place.address;
   }
+  if (el.go.hidden) return;
   el.go.href = mapsUrl(place, mode);
 }
 
