@@ -1,0 +1,275 @@
+/* Where To Go — one screen, one question, big tiles.
+   Type and tap sizes are the design, not a preference: this app is built at accessibility sizes
+   rather than supporting them. See PROJECT.md §6. */
+
+:root {
+  --bg: #fbfaf7;
+  --ink: #16181a;
+  --ink-soft: #5b6167;
+  --card: #ffffff;
+  --line: #e3e0d9;
+  --accent: #14532d;
+  --accent-ink: #ffffff;
+  --danger: #a1261c;
+
+  --tile-min: 132px;
+  --tap: 60px;
+  --radius: 20px;
+
+  --type: 1.30rem;          /* body floor ~21px */
+  --type-tile: 1.42rem;
+  --type-ask: clamp(1.9rem, 7vw, 2.6rem);
+  --type-answer: 1.55rem;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101312;
+    --ink: #f0f2ee;
+    --ink-soft: #a3aaa4;
+    --card: #1a1e1b;
+    --line: #2c332d;
+    --accent: #6ee7a8;
+    --accent-ink: #08240f;
+    --danger: #ff8f83;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+               "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  font-size: var(--type);
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Never hide the focus ring: the audience may be using Switch Control or a keyboard. */
+:focus-visible { outline: 4px solid var(--accent); outline-offset: 3px; }
+
+.app {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 20px) 18px calc(env(safe-area-inset-bottom) + 28px);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.ask {
+  margin: 0;
+  font-size: var(--type-ask);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.gear {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.gear svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+
+.tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tile-min);
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--type-tile);
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The photo is the label for anyone who cannot read; until real photos exist, the glyph is. */
+.tile .face {
+  font-size: 2.4rem;
+  line-height: 1;
+  font-weight: 400;
+}
+.tile .name { display: block; }
+.tile .sub {
+  display: block;
+  font-size: 0.98rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  background: rgba(6, 10, 7, 0.42);
+  z-index: 10;
+}
+
+/* `hidden` alone loses to `display: flex` above — the empty panel was painting on the launch
+   screen until this rule existed. */
+.sheet[hidden] { display: none; }
+.sheet .panel {
+  width: 100%;
+  max-width: 34rem;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 26px 20px calc(env(safe-area-inset-bottom) + 22px);
+  border-radius: 26px 26px 0 0;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+
+.sheet-title {
+  margin: 0 0 12px;
+  font-size: 1.35rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.summary {
+  margin: 0 0 8px;
+  font-size: var(--type-answer);
+  font-weight: 600;
+  line-height: 1.35;
+  min-height: 2.7em;
+}
+
+.stamp {
+  margin: 0 0 18px;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+.stamp[data-kind="demo"] { color: var(--danger); font-weight: 700; letter-spacing: 0.06em; }
+
+.go, .add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: var(--tap);
+  border: 0;
+  border-radius: 16px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.back {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  margin-top: 10px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+/* Helper screen */
+.lang { display: flex; gap: 10px; margin-bottom: 20px; }
+.lang button {
+  flex: 1;
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.02rem;
+  cursor: pointer;
+}
+.lang button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+
+.places { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 12px; }
+.place {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+.place label { display: block; font-size: 0.95rem; color: var(--ink-soft); }
+.place input {
+  width: 100%;
+  margin-top: 4px;
+  min-height: 46px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.02rem;
+}
+.place .span2 { grid-column: 1 / -1; }
+/* An empty text input defaults to ~20 characters wide and was stealing the name column. */
+.place .glyph { width: 5.5rem; }
+.place .del {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.98rem;
+  cursor: pointer;
+}
+
+@media (min-width: 30rem) {
+  .tiles { grid-template-columns: 1fr 1fr; }
+}

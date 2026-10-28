@@ -1,0 +1,15 @@
+{
+  "name": "Where To Go · 想去哪儿",
+  "short_name": "Where To Go",
+  "description": "One tap from your saved places to a plain-language transit answer.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fbfaf7",
+  "theme_color": "#fbfaf7",
+  "lang": "en",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

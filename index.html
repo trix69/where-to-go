@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Where To Go · 想去哪儿</title>
+<meta name="description" content="One tap from your saved places to a plain-language transit answer.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111411" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<!-- No service worker, by decision (PROJECT.md §7): this app is useless offline, so it does not pretend otherwise. -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Where To Go">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main class="app" id="app">
+
+  <header class="bar">
+    <h1 class="ask" id="ask">Where to?</h1>
+    <button class="gear" id="settingsBtn" type="button" aria-label="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="3.2"/>
+        <path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/>
+      </svg>
+    </button>
+  </header>
+
+  <ul class="tiles" id="tiles"></ul>
+
+  <!-- Answer for one place. Two actions only: go, or go back. -->
+  <section class="sheet" id="sheet" hidden aria-labelledby="sheetTitle">
+    <div class="panel">
+      <h2 class="sheet-title" id="sheetTitle"></h2>
+      <p class="summary" id="summary" role="status" aria-live="polite"></p>
+      <p class="stamp" id="stamp" hidden></p>
+      <a class="go" id="goBtn" href="#" rel="noopener">Open in Maps</a>
+      <button class="back" id="closeSheet" type="button">Back</button>
+    </div>
+  </section>
+
+  <!-- Helper's screen, not the traveller's. -->
+  <section class="sheet" id="manage" hidden aria-labelledby="manageTitle">
+    <div class="panel">
+      <h2 class="sheet-title" id="manageTitle">Places</h2>
+      <div class="lang" id="langRow" role="group" aria-label="Language"></div>
+      <ul class="places" id="places"></ul>
+      <button class="add" id="addBtn" type="button">Add a place</button>
+      <button class="back" id="closeManage" type="button">Done</button>
+    </div>
+  </section>
+
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
