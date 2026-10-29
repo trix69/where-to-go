@@ -1,26 +1,34 @@
 #!/usr/bin/env python3
-"""Build the test site and push it to trix69/where-to-go-test (served at trix69.github.io/where-to-go-test/).
+"""Build the test site and push it to trix69/where-to-go-test (trix69.github.io/where-to-go-test/).
 
 Usage:
   python3 tools/deploy_test.py              build from the working tree and push the test site
   python3 tools/deploy_test.py --local DIR  only build the test copy into DIR (no git), to check it
 
+Live is never touched here. Live ships only when Trix says so, via tools/deploy_live.py.
+
 dist/test-site/ is a clone of the test repo, made on first use (dist/ is git-ignored).
-The live site (main, trix69.github.io/where-to-go/) is not touched by this script.
 
 The test copy differs from the live one in these ways only:
 - title "Where To Go (Test)", a noindex tag, an orange TEST ribbon;
 - its own manifest identity, so it installs beside the live app instead of replacing it;
 - its own storage key (whereToGo-test.v1), so trying the test site in the same browser does not
-  rewrite the real saved places.
+  rewrite the real saved places;
+- the version reads "<VERSION>-test" and every ?v= stamp is a fingerprint of the app files, so each
+  new test build is fetched fresh instead of served from Pages' 10-minute cache.
 Everything else — config.js, proxy URL, code — is identical, so the test site exercises the same
 transit proxy the live one uses.
 """
+import hashlib
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import version  # noqa: E402  (tools/version.py)
 
 ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "dist" / "test-site"
@@ -48,6 +56,10 @@ def build(out):
             shutil.rmtree(out / d)
         shutil.copytree(ROOT / d, out / d)
 
+    live = version.found()["VERSION"]
+    shown = f"{live}-test"
+    stamp = hashlib.sha1(b"".join((ROOT / f).read_bytes() for f in FILES)).hexdigest()[:10]
+
     manifest = (ROOT / "manifest.webmanifest").read_text(encoding="utf-8")
     manifest = must(manifest, '"name": "Where To Go · 想去哪儿"', '"name": "Where To Go (Test)"', "manifest name")
     manifest = must(manifest, '"short_name": "Where To Go"', '"short_name": "WTG Test"', "manifest short_name")
@@ -60,18 +72,30 @@ def build(out):
     html = must(html, "<body>\n", "<body>\n" + RIBBON, "<body>")
     html = must(html, '<meta name="apple-mobile-web-app-title" content="Where To Go">',
                 '<meta name="apple-mobile-web-app-title" content="WTG Test">', "home-screen title")
+    html, n = version.SHOWN.subn(r'\g<1>' + shown + r'\g<3>', html)
+    if n != 1:
+        sys.exit('test build: index.html needs exactly one <span id="appVersion">')
+    html = must(html, '<span id="appVersion">', f'<span id="appVersion" data-build="{stamp}">', "appVersion span")
+    html, n = version.HTML_ASSETS.subn(r'\g<1>?v=' + stamp + '"', html)
+    if n != 2:
+        sys.exit("test build: index.html should load style.css and app.js with ?v=")
     (out / "index.html").write_text(html, encoding="utf-8")
 
-    js = (out / "app.js").read_text(encoding="utf-8")
-    js = must(js, 'const STORE = "whereToGo.v1";', 'const STORE = "whereToGo-test.v1";', "storage key")
-    (out / "app.js").write_text(js, encoding="utf-8")
+    for name in ("app.js", "transit.js"):
+        js = (out / name).read_text(encoding="utf-8")
+        js, n = version.JS_ASSETS.subn(r'\g<1>?v=' + stamp + '"', js)
+        if n == 0:
+            sys.exit(f"test build: {name} has no module imports to stamp")
+        if name == "app.js":
+            js = must(js, 'const STORE = "whereToGo.v1";', 'const STORE = "whereToGo-test.v1";', "storage key")
+            keys = set(re.findall(r'"(whereToGo[\w.-]*)"', js))
+            unknown = sorted(k for k in keys if k != "whereToGo-test.v1")
+            if unknown:
+                sys.exit("test build: decide whether these keys are shared or kept apart: " + ", ".join(unknown))
+        (out / name).write_text(js, encoding="utf-8")
 
-    # Any storage key added later must be a conscious choice about sharing, as in typing-zen.
-    keys = set(re.findall(r'"(whereToGo[\w.-]*)"', js + html))
-    unknown = sorted(k for k in keys if k != "whereToGo-test.v1")
-    if unknown:
-        sys.exit("test build: decide whether these keys are shared or kept apart: " + ", ".join(unknown))
-    return "test"
+    (out / "version.json").write_text('{"version": "%s", "build": "%s"}\n' % (shown, stamp), encoding="utf-8")
+    return shown, stamp
 
 
 def git(*args, cwd=SITE):
@@ -83,8 +107,8 @@ def main():
     if args[:1] == ["--local"] and len(args) == 2:
         out = Path(args[1])
         out.mkdir(parents=True, exist_ok=True)
-        build(out)
-        print(f"Built test copy in {out}")
+        shown, stamp = build(out)
+        print(f"Built test copy {shown} (build {stamp}) in {out}")
         return
     if args:
         sys.exit(__doc__)
@@ -98,16 +122,16 @@ def main():
     if git("ls-remote", "--heads", "origin", "main"):
         git("pull", "-q", "--ff-only", "origin", "main")
 
-    build(SITE)
+    shown, stamp = build(SITE)
     src = git("rev-parse", "--short", "HEAD", cwd=ROOT)
     dirty = " + uncommitted changes" if git("status", "--porcelain", "--", *FILES, *DIRS, cwd=ROOT) else ""
     git("add", "-A")
     if not git("status", "--porcelain"):
         print("Test site unchanged")
         return
-    git("commit", "-q", "-m", f"Test build from where-to-go {src}{dirty}")
+    git("commit", "-q", "-m", f"Test build {shown} ({stamp}) from where-to-go {src}{dirty}")
     git("push", "-q", "origin", "HEAD:main")
-    print(f"Pushed test build from {src}{dirty} -> {URL}")
+    print(f"Pushed test build {shown} ({stamp}) from {src}{dirty} -> {URL}")
 
 
 if __name__ == "__main__":

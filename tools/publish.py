@@ -24,6 +24,7 @@ LIVE = "where-to-go"
 TEST = "where-to-go-test"
 OWNER = "trix69"
 DRY = "--dry-run" in sys.argv[1:]
+LIVE = "--live" in sys.argv[1:]   # pushing main is a ship; tools/deploy_live.py is the normal route
 
 
 def run(cmd, cwd=ROOT, check=True, capture=True):
@@ -70,7 +71,10 @@ def main():
         run(["git", "remote", "add", "origin", f"https://github.com/{OWNER}/{LIVE}.git"])
     elif not run(["git", "remote"], check=False):
         run(["git", "remote", "add", "origin", f"https://github.com/{OWNER}/{LIVE}.git"])
-    run(["git", "push", "-u", "origin", "main"])
+    if LIVE:
+        run(["git", "push", "-u", "origin", "main"])
+    else:
+        print("  not touching live: `main` is pushed only by tools/deploy_live.py --ship <version>")
     enable_pages(LIVE)
 
     print(f"test repo {OWNER}/{TEST}")

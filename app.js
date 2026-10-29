@@ -4,7 +4,7 @@
  * No framework, no build step, no network beyond the transit lookup.
  */
 
-import { getTrip, mapsUrl, usingMock } from "./transit.js";
+import { getTrip, mapsUrl, usingMock } from "./transit.js?v=0.1";
 
 const STORE = "whereToGo.v1";
 
@@ -63,57 +63,30 @@ const COPY = {
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
   },
-  "zh-Hant": {
-    ask: "想去哪兒?",
-    settings: "設定",
-    back: "返回",
-    places: "我的地方",
-    add: "新增地方",
-    done: "完成",
-    delete: "刪除",
-    name: "名字",
-    address: "地址",
-    glyph: "圖示",
-    openMaps: "開啟地圖",
-    looking: "正在查詢…",
-    demo: "範例資料 — 還沒接實時交通",
-    // Traditional form of the same rule: 號線 for a train line, 路 only for buses.
-    trip: (t) => {
-      const word = COPY["zh-Hant"].modes[t.mode] || "公車";
-      const ride = t.mode === "train" ? `${t.line}號線`
-        : t.mode === "bus" || t.mode === "coach" ? `${word}${t.line}路`
-        : `${word}${t.line}`;
-      return `搭${ride}，${t.waitMin}分鐘後有車，路上大約${t.durationMin}分鐘。`;
-    },
-    modes: { bus: "公車", train: "火車", ferry: "渡輪", lightrail: "輕軌", metro: "捷運", coach: "巴士" },
-    failed: "現在查不到。",
-    stillGo: "還是開啟地圖",
-    needAddress: "請先填地址。",
-    noOrigin: "請先填出發點。",
-  },
 };
 
 const LANGS = [
-  { id: "en", label: "English" },
   { id: "zh-Hans", label: "简体中文" },
-  { id: "zh-Hant", label: "繁體中文" },
+  { id: "en", label: "English" },
 ];
 
 const SEED = [
-  { id: "home", name: { en: "Home", "zh-Hans": "家", "zh-Hant": "家" }, glyph: "🏠", address: "12 Crown Street, Sydney NSW 2000" },
-  { id: "doctor", name: { en: "Doctor", "zh-Hans": "医生", "zh-Hant": "醫生" }, glyph: "🏥", address: "Royal Prince Alfred Hospital, Missenden Road, Camperdown NSW 2050" },
-  { id: "market", name: { en: "Market", "zh-Hans": "市场", "zh-Hant": "市場" }, glyph: "🛒", address: "Paddy's Markets, 9-13 Hay Street, Haymarket NSW 2000" },
-  { id: "daughter", name: { en: "Daughter's", "zh-Hans": "女儿家", "zh-Hant": "女兒家" }, glyph: "👨‍👩‍👧", address: "8 Belmore Road, Randwick NSW 2031" },
-  { id: "park", name: { en: "Park", "zh-Hans": "公园", "zh-Hant": "公園" }, glyph: "🌳", address: "Centennial Park, Sydney NSW 2021" },
+  { id: "home", name: { en: "Home", "zh-Hans": "家" }, glyph: "🏠", address: "12 Crown Street, Sydney NSW 2000" },
+  { id: "doctor", name: { en: "Doctor", "zh-Hans": "医生" }, glyph: "🏥", address: "Royal Prince Alfred Hospital, Missenden Road, Camperdown NSW 2050" },
+  { id: "market", name: { en: "Market", "zh-Hans": "市场" }, glyph: "🛒", address: "Paddy's Markets, 9-13 Hay Street, Haymarket NSW 2000" },
+  { id: "daughter", name: { en: "Daughter's", "zh-Hans": "女儿家" }, glyph: "👨‍👩‍👧", address: "8 Belmore Road, Randwick NSW 2031" },
+  { id: "park", name: { en: "Park", "zh-Hans": "公园" }, glyph: "🌳", address: "Centennial Park, Sydney NSW 2021" },
 ];
 
 /* ---------- state ---------- */
 
+/* The app opens in Simplified Chinese for everyone: the audience is Chinese-speaking elders, and a
+ * device set to English by a son or daughter must not leave the parent with an English screen.
+ * The helper screen switches to English. */
+const DEFAULT_LANG = "zh-Hans";
+
 function pickLang() {
-  const l = (navigator.language || "en").toLowerCase();
-  if (l.startsWith("zh")) return /-(tw|hk|mo|hant)/.test(l) ? "zh-Hant" : "zh-Hans";
-  if (l.startsWith("en")) return "en";
-  return "en";
+  return DEFAULT_LANG;
 }
 
 let state = load();
@@ -123,7 +96,10 @@ function load() {
     const raw = localStorage.getItem(STORE);
     if (raw) {
       const s = JSON.parse(raw);
-      if (s && Array.isArray(s.places) && COPY[s.lang]) return s;
+      if (s && Array.isArray(s.places)) {
+        if (!COPY[s.lang]) s.lang = DEFAULT_LANG;   // a locale we dropped (zh-Hant) or a typo
+        return s;
+      }
     }
   } catch (e) { /* private mode, corrupt value: fall through to the seed */ }
   return { lang: pickLang(), places: SEED.map((p) => ({ ...p })) };
@@ -133,7 +109,7 @@ function save() {
   try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
 }
 
-const t = () => COPY[state.lang] || COPY.en;
+const t = () => COPY[state.lang] || COPY[DEFAULT_LANG];
 const nameOf = (place) => (place.name && (place.name[state.lang] || place.name.en)) || place.address;
 
 /* ---------- elements ---------- */
@@ -356,7 +332,7 @@ el.sheet.addEventListener("click", (e) => { if (e.target === el.sheet) show(null
 el.manage.addEventListener("click", (e) => { if (e.target === el.manage) show(null); });
 
 el.addBtn.addEventListener("click", () => {
-  const newName = { en: "New place", "zh-Hans": "新地方", "zh-Hant": "新地方" };
+  const newName = { en: "New place", "zh-Hans": "新地方" };
   state.places.push({
     id: `p${Date.now()}`,
     name: { [state.lang]: newName[state.lang] },

@@ -89,7 +89,7 @@ body {
   color: var(--ink-soft);
   cursor: pointer;
 }
-.gear svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.gear svg { width: 100%; height: 100%; fill: currentColor; stroke: none; }
 
 .tiles {
   list-style: none;
@@ -235,6 +235,9 @@ body {
 .lang button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
 
 .places { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 12px; }
+
+/* Version lives on the helper screen only: the traveller's screen has no chrome for it. */
+.ver { margin: 16px 0 0; text-align: center; font-size: 0.95rem; color: var(--ink-soft); }
 .place {
   display: grid;
   grid-template-columns: 1fr auto;
