@@ -5,5 +5,5 @@
  *             Live and test share one proxy; the key lives in the proxy's environment, never here.
  */
 export const CONFIG = {
-  proxyBase: "",
+  proxyBase: "https://where-to-go.trix69.workers.dev",
 };
