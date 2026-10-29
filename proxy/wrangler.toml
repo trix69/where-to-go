@@ -1,0 +1,13 @@
+# Cloudflare Worker config for the transit proxy.
+#
+#   npx wrangler deploy            # from this directory
+#   npx wrangler secret put TFNSW_KEY
+#
+# The key never appears in this file or in the repo: it lives as a Worker secret.
+
+name = "where-to-go"
+main = "worker.js"
+compatibility_date = "2026-10-29"
+
+# A GET-only, keyless-in-the-browser proxy. No bindings, no KV, no storage: nothing to leak.
+workers_dev = true
