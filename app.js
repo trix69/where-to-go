@@ -31,6 +31,8 @@ const COPY = {
     locationFailed: "Couldn't get your location. Try again.",
     useMyLocation: "Use my location",
     fromHome: "From home",
+    fromPlace: (n) => `From ${n}`,
+    chooseOrigin: "Where are you starting from?",
     demo: "SAMPLE DATA — no live transit yet",
     trip: (t) =>
       `${t.mode in COPY.en.modes ? COPY.en.modes[t.mode] : "Bus"} ${t.line} in ${t.waitMin} min, ${t.durationMin} min to get there.`,
@@ -69,6 +71,8 @@ const COPY = {
     locationFailed: "暂时定位不到，请重试。",
     useMyLocation: "使用我的位置",
     fromHome: "从家出发",
+    fromPlace: (n) => `从${n}出发`,
+    chooseOrigin: "从哪里出发？",
     demo: "示例数据 — 还没接实时公交",
     // "路" is the bus-route suffix; a train line takes "号线", and ferry/light-rail numbers take neither.
     trip: (t) => {
@@ -176,6 +180,9 @@ const el = {
   go: $("goBtn"),
   closeSheet: $("closeSheet"),
   retryLoc: $("retryLoc"),
+  originChoices: $("originChoices"),
+  originAsk: $("originAsk"),
+  originList: $("originList"),
   manage: $("manage"),
   manageTitle: $("manageTitle"),
   langRow: $("langRow"),
@@ -251,7 +258,8 @@ function askLocation() {
   });
 }
 
-async function originFor(place) {
+async function originFor(place, forced) {
+  if (forced) return forced;                    // the traveller picked a starting place by hand
   const loc = await askLocation();
   if (loc.coord) {
     location = loc;
@@ -260,11 +268,30 @@ async function originFor(place) {
   // No device location: the place called Home is a fallback for somewhere else, but it cannot be the
   // origin when the destination IS home, and it must be said out loud rather than assumed.
   const home = state.places.find((p) => p.id === "home" && p.address);
-  if (home && home.id !== place.id) return { address: home.address, fromHome: true, error: loc.error };
+  if (home && home.id !== place.id) return { address: home.address, label: nameOf(home), error: loc.error };
   return { error: loc.error };
 }
 
-async function openAnswer(place) {
+/** When the origin is unknown, the other saved places are the only origins the app can offer. */
+function renderOriginChoices(place) {
+  const c = t();
+  const options = state.places.filter((p) => p.id !== place.id && (p.coord || p.address));
+  if (!options.length) return;
+  el.originAsk.textContent = c.chooseOrigin;
+  el.originList.replaceChildren(
+    ...options.map((p) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "origin";
+      b.textContent = nameOf(p);
+      b.addEventListener("click", () => openAnswer(place, { coord: p.coord, address: p.address, label: nameOf(p) }));
+      return b;
+    }),
+  );
+  el.originChoices.hidden = false;
+}
+
+async function openAnswer(place, forcedOrigin = null) {
   const c = t();
   currentPlace = place;
   show("answer");
@@ -272,6 +299,7 @@ async function openAnswer(place) {
   el.summary.textContent = c.locating;
   el.stamp.hidden = true;
   el.retryLoc.hidden = true;
+  el.originChoices.hidden = true;
   const seq = ++lookSeq;
   let mode = "transit";
   el.closeSheet.textContent = c.back;
@@ -288,7 +316,7 @@ async function openAnswer(place) {
   }
 
   try {
-    const origin = await originFor(place);
+    const origin = await originFor(place, forcedOrigin);
     if (seq !== lookSeq) return;
     if (origin.error && !origin.address) {
       // Permission is the blocker, so say that and offer the one action that can fix it.
@@ -296,6 +324,8 @@ async function openAnswer(place) {
       el.retryLoc.textContent = c.useMyLocation;
       el.retryLoc.hidden = false;
       el.go.textContent = c.stillGo;
+      // Still usable without permission: pick the place you are standing in.
+      renderOriginChoices(place);
     } else {
       el.summary.textContent = c.looking;
       const trip = await getTrip(place, { origin });
@@ -307,8 +337,8 @@ async function openAnswer(place) {
         el.stamp.textContent = c.demo;
         el.stamp.dataset.kind = "demo";
         el.stamp.hidden = false;
-      } else if (origin.fromHome) {
-        el.stamp.textContent = c.fromHome;
+      } else if (origin.label) {
+        el.stamp.textContent = c.fromPlace(origin.label);
         el.stamp.dataset.kind = "note";
         el.stamp.hidden = false;
       }
