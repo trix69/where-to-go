@@ -5,7 +5,7 @@
  *
  * GET /trip?to=<address>&from=<address>|fromCoord=<lng>,<lat>
  */
-import { fetchTrip, resolvePlace } from "./core.mjs";
+import { fetchTrip, resolvePlaces } from "./core.mjs";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*", // GET only, no credentials, no cookies: nothing to protect
@@ -31,9 +31,10 @@ export default {
     if (url.pathname === "/resolve") {
       const q = (url.searchParams.get("q") || "").trim();
       if (!q) return json(400, { ok: false, error: "no-query" });
-      const hit = await resolvePlace({ key: env.TFNSW_KEY, text: q });
-      if (!hit) return json(200, { ok: false, error: "not-found" });
-      return json(200, { ok: true, name: hit.name, coord: hit.coord });
+      const all = await resolvePlaces({ key: env.TFNSW_KEY, text: q });
+      if (!all.length) return json(200, { ok: false, error: "not-found" });
+      const [best, ...rest] = all;
+      return json(200, { ok: true, name: best.name, coord: best.coord, matches: rest });
     }
 
     if (url.pathname !== "/trip") return json(404, { ok: false, error: "not-found" });

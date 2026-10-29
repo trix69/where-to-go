@@ -60,7 +60,7 @@ export async function resolveAddress(text) {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok || !body || body.ok !== true) return null;
-  return { coord: body.coord, name: body.name };
+  return { coord: body.coord, name: body.name, others: Array.isArray(body.matches) ? body.matches : [] };
 }
 
 /**

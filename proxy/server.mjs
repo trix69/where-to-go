@@ -9,7 +9,7 @@ import http from "node:http";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { fetchTrip, resolvePlace } from "./core.mjs";
+import { fetchTrip, resolvePlace, resolvePlaces } from "./core.mjs";
 
 const PORT = Number(process.env.PORT || 8802);
 const SAMPLE = process.argv.includes("--sample");
@@ -53,11 +53,12 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/resolve") {
     const q = (url.searchParams.get("q") || "").trim();
     if (!q) return send(res, 400, { ok: false, error: "no-query" });
-    if (SAMPLE) return send(res, 200, { ok: true, name: `${q} (sample)`, coord: { lng: 151.20629, lat: -33.88408 } });
+    if (SAMPLE) return send(res, 200, { ok: true, name: `${q} (sample)`, coord: { lng: 151.20629, lat: -33.88408 }, matches: [] });
     if (!KEY) return send(res, 503, { ok: false, error: "no-key" });
-    const hit = await resolvePlace({ key: KEY, text: q });
-    if (!hit) return send(res, 200, { ok: false, error: "not-found" });
-    return send(res, 200, { ok: true, name: hit.name, coord: hit.coord });
+    const all = await resolvePlaces({ key: KEY, text: q });
+    if (!all.length) return send(res, 200, { ok: false, error: "not-found" });
+    const [best, ...rest] = all;
+    return send(res, 200, { ok: true, name: best.name, coord: best.coord, matches: rest });
   }
 
   if (url.pathname !== "/trip") return send(res, 404, { ok: false, error: "not-found" });

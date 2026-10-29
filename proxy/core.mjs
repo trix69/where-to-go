@@ -67,7 +67,19 @@ export function buildTripUrl({ from, to, now = new Date() }) {
  * report the name TfNSW matched, so a wrong match is visible instead of silently wrong.
  */
 export async function resolvePlace({ key, text, timeoutMs = 6000 }) {
-  if (!text) return null;
+  const all = await resolvePlaces({ key, text, timeoutMs });
+  return all[0] || null;
+}
+
+/**
+ * The same lookup, keeping the runner-up matches.
+ *
+ * stop_finder is an autocomplete: it returns several candidates and the first is not always the right
+ * one ("Centennial Park" came back as a park 258 km away). Returning up to three lets the helper pick
+ * the address they meant instead of being told a confident wrong answer.
+ */
+export async function resolvePlaces({ key, text, timeoutMs = 6000, limit = 3 }) {
+  if (!text) return [];
   const p = new URLSearchParams({
     outputFormat: "rapidJSON",
     coordOutputFormat: "EPSG:4326",
@@ -82,14 +94,15 @@ export async function resolvePlace({ key, text, timeoutMs = 6000 }) {
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
-    return null;
+    return [];
   }
-  if (!res.ok) return null;
+  if (!res.ok) return [];
   const json = await res.json().catch(() => null);
-  const loc = json?.locations?.[0];
-  const coord = loc?.coord; // [lat, lng] — the reverse of what the trip endpoint wants
-  if (!Array.isArray(coord) || coord.length < 2) return null;
-  return { coord: { lat: Number(coord[0]), lng: Number(coord[1]) }, name: loc.name || text };
+  // [lat, lng] in the response — the reverse of what the trip endpoint wants.
+  return (json?.locations || [])
+    .filter((l) => Array.isArray(l?.coord) && l.coord.length >= 2)
+    .slice(0, limit)
+    .map((l) => ({ coord: { lat: Number(l.coord[0]), lng: Number(l.coord[1]) }, name: l.name || text }));
 }
 
 const MODE_BY_NAME = [

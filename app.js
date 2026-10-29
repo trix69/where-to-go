@@ -33,6 +33,7 @@ const COPY = {
     fromHome: "From home",
     fromPlace: (n) => `From ${n}`,
     chooseOrigin: "Where are you starting from?",
+    storageWarn: "This browser isn't saving changes (private browsing?). Places will be lost when you close the tab.",
     demo: "SAMPLE DATA — no live transit yet",
     trip: (t) =>
       `${t.mode in COPY.en.modes ? COPY.en.modes[t.mode] : "Bus"} ${t.line} in ${t.waitMin} min, ${t.durationMin} min to get there.`,
@@ -73,6 +74,7 @@ const COPY = {
     fromHome: "从家出发",
     fromPlace: (n) => `从${n}出发`,
     chooseOrigin: "从哪里出发？",
+    storageWarn: "当前浏览器无法保存（无痕浏览？）。关闭后这些地点会丢失。",
     demo: "示例数据 — 还没接实时公交",
     // "路" is the bus-route suffix; a train line takes "号线", and ferry/light-rail numbers take neither.
     trip: (t) => {
@@ -141,6 +143,7 @@ function pickLang() {
   return DEFAULT_LANG;
 }
 
+let storageOk = true;
 let state = load();
 // ensureDefaults() can add a preset to a stored set; persist that immediately, not on the next edit.
 save();
@@ -160,7 +163,14 @@ function load() {
 }
 
 function save() {
-  try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
+  // Private browsing (iOS Safari especially) throws on write. Swallowing that silently is how a
+  // helper spends ten minutes setting up places that vanish — so the failure is recorded and shown.
+  try {
+    localStorage.setItem(STORE, JSON.stringify(state));
+    storageOk = true;
+  } catch (e) {
+    storageOk = false;
+  }
 }
 
 const t = () => COPY[state.lang] || COPY[DEFAULT_LANG];
@@ -180,6 +190,7 @@ const el = {
   go: $("goBtn"),
   closeSheet: $("closeSheet"),
   retryLoc: $("retryLoc"),
+  storageWarn: $("storageWarn"),
   originChoices: $("originChoices"),
   originAsk: $("originAsk"),
   originList: $("originList"),
@@ -375,6 +386,8 @@ function openManage() {
   el.addBtn.textContent = c.add;
   el.closeManage.textContent = c.done;
   el.verLabel.textContent = c.versionLabel;
+  el.storageWarn.hidden = storageOk;
+  el.storageWarn.textContent = c.storageWarn;
   el.verMsg.textContent = c.checkUpdates;
 
   el.langRow.replaceChildren(
@@ -457,8 +470,30 @@ function suspectMatch(address, hit) {
   return { suspicious: !shared || away > 60, away: away > 60 ? away : 0 };
 }
 
+function renderAlternatives(place, status, others) {
+  const wrap = document.createElement("div");
+  wrap.className = "alts span2";
+  for (const m of others) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "origin";
+    b.textContent = m.name;
+    b.addEventListener("click", () => {
+      place.coord = m.coord;
+      place.resolvedName = m.name;
+      save();
+      status.dataset.kind = "ok";
+      status.textContent = t().matched(m.name);
+      wrap.remove();
+    });
+    wrap.append(b);
+  }
+  status.after(wrap);
+}
+
 async function runResolve(place, status) {
   const c = t();
+  status.parentElement.querySelectorAll(".alts").forEach((n) => n.remove());
   const hit = await resolveAddress(place.address);
   if (hit) {
     place.coord = hit.coord;
@@ -466,6 +501,9 @@ async function runResolve(place, status) {
     const { suspicious, away } = suspectMatch(place.address, hit);
     status.dataset.kind = suspicious ? "warn" : "ok";
     status.textContent = suspicious ? c.checkMatch(hit.name, away) : c.matched(hit.name);
+    // A wrong first match is the common failure, and stop_finder gave us the runners-up: let the
+    // helper pick the address they meant instead of leaving them to retype it.
+    if (suspicious && hit.others && hit.others.length) renderAlternatives(place, status, hit.others);
   } else {
     place.coord = null;
     place.resolvedName = null;

@@ -244,6 +244,22 @@ body {
 }
 .origins[hidden] { display: none; }
 
+/* Runner-up matches, offered only when the first one looks wrong. */
+.alts { display: grid; gap: 8px; margin-top: 8px; }
+.alts .origin { text-align: left; font-size: 1rem; }
+
+/* Storage failure is loud: a helper must not spend ten minutes on places that will vanish. */
+.warn {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+  color: var(--danger);
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+.warn[hidden] { display: none; }
+
 .back {
   display: block;
   width: 100%;
