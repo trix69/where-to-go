@@ -107,8 +107,24 @@ const SEED = [
   { id: "doctor", name: { en: "Doctor", "zh-Hans": "医生" }, glyph: "🏥", address: "Royal Prince Alfred Hospital, Missenden Road, Camperdown NSW 2050" },
   { id: "market", name: { en: "Market", "zh-Hans": "市场" }, glyph: "🛒", address: "Paddy's Markets, 9-13 Hay Street, Haymarket NSW 2000" },
   { id: "daughter", name: { en: "Daughter's", "zh-Hans": "女儿家" }, glyph: "👨‍👩‍👧", address: "8 Belmore Road, Randwick NSW 2031" },
+  { id: "school", name: { en: "School", "zh-Hans": "学校" }, glyph: "🏫", address: "Randwick Public School, Cowper Street, Randwick NSW 2031" },
   { id: "park", name: { en: "Park", "zh-Hans": "公园" }, glyph: "🌳", address: "Centennial Park, Sydney NSW 2021" },
 ];
+
+// Bumped when a preset is added, so an existing set of places picks it up without a wipe.
+const SEED_VERSION = 2;
+
+/** Add presets introduced since this browser's places were saved, keeping tile order. */
+function ensureDefaults(stored) {
+  if ((stored.seedVersion || 1) >= SEED_VERSION) return stored;
+  const have = new Set(stored.places.map((p) => p.id));
+  for (const p of SEED) if (!have.has(p.id)) stored.places.push({ ...p });
+  // Presets keep their declared order; anything the helper added stays after them.
+  const rank = new Map(SEED.map((p, i) => [p.id, i]));
+  stored.places.sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : SEED.length) - (rank.has(b.id) ? rank.get(b.id) : SEED.length));
+  stored.seedVersion = SEED_VERSION;
+  return stored;
+}
 
 /* ---------- state ---------- */
 
@@ -122,6 +138,8 @@ function pickLang() {
 }
 
 let state = load();
+// ensureDefaults() can add a preset to a stored set; persist that immediately, not on the next edit.
+save();
 
 function load() {
   try {
@@ -130,11 +148,11 @@ function load() {
       const s = JSON.parse(raw);
       if (s && Array.isArray(s.places)) {
         if (!COPY[s.lang]) s.lang = DEFAULT_LANG;   // a locale we dropped (zh-Hant) or a typo
-        return s;
+        return ensureDefaults(s);
       }
     }
   } catch (e) { /* private mode, corrupt value: fall through to the seed */ }
-  return { lang: pickLang(), places: SEED.map((p) => ({ ...p })) };
+  return { lang: pickLang(), seedVersion: SEED_VERSION, places: SEED.map((p) => ({ ...p })) };
 }
 
 function save() {
