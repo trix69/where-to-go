@@ -32,6 +32,7 @@ const COPY = {
     useMyLocation: "Use my location",
     fromHome: "From home",
     fromPlace: (n) => `From ${n}`,
+    routeTo: (n) => `Points to: ${n}`,
     chooseOrigin: "Where are you starting from?",
     storageWarn: "This browser isn't saving changes (private browsing?). Places will be lost when you close the tab.",
     demo: "SAMPLE DATA — no live transit yet",
@@ -73,6 +74,7 @@ const COPY = {
     useMyLocation: "使用我的位置",
     fromHome: "从家出发",
     fromPlace: (n) => `从${n}出发`,
+    routeTo: (n) => `定位到：${n}`,
     chooseOrigin: "从哪里出发？",
     storageWarn: "当前浏览器无法保存（无痕浏览？）。关闭后这些地点会丢失。",
     demo: "示例数据 — 还没接实时公交",
@@ -185,6 +187,8 @@ const el = {
   tiles: $("tiles"),
   sheet: $("sheet"),
   sheetTitle: $("sheetTitle"),
+  destAddr: $("destAddr"),
+  destMatch: $("destMatch"),
   summary: $("summary"),
   stamp: $("stamp"),
   go: $("goBtn"),
@@ -323,6 +327,14 @@ async function openAnswer(place, forcedOrigin = null) {
   el.stamp.hidden = true;
   el.retryLoc.hidden = true;
   el.originChoices.hidden = true;
+  // Where this trip is actually going: the saved address, and — when it differs — the name TfNSW
+  // matched, because that is what the coordinates were taken from.
+  const addr = (place.address || "").trim();
+  const matched = (place.resolvedName || "").trim();
+  el.destAddr.textContent = addr || matched;
+  el.destAddr.hidden = !(addr || matched);
+  el.destMatch.textContent = matched && matched !== addr ? c.routeTo(matched) : "";
+  el.destMatch.hidden = !(matched && matched !== addr);
   const seq = ++lookSeq;
   let mode = "transit";
   el.closeSheet.textContent = c.back;
