@@ -23,9 +23,7 @@
   <header class="bar">
     <h1 class="ask" id="ask">想去哪儿?</h1>
     <button class="gear" id="settingsBtn" type="button" aria-label="Settings">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2zm9.2 5.1-.1-1.5 1.4-2.1a.6.6 0 0 0 .1-.6l-1.9-3.3a.6.6 0 0 0-.6-.2l-2.4.8a8.9 8.9 0 0 0-1.3-.7l-.5-2.6a.6.6 0 0 0-.6-.5h-3.8a.6.6 0 0 0-.6.5l-.5 2.6c-.5.2-.9.4-1.3.7l-2.4-.8a.6.6 0 0 0-.6.2L2.4 9.3a.6.6 0 0 0 .1.6l1.4 2.1a8.9 8.9 0 0 0 0 1.5l-1.4 2.1a.6.6 0 0 0-.1.6l1.9 3.3a.6.6 0 0 0 .6.2l2.4-.8c.4.3.8.5 1.3.7l.5 2.6a.6.6 0 0 0 .6.5h3.8a.6.6 0 0 0 .6-.5l.5-2.6c.5-.2.9-.4 1.3-.7l2.4.8a.6.6 0 0 0 .6-.2l1.9-3.3a.6.6 0 0 0-.1-.6l-1.4-2.1z"/>
-      </svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
   </header>
 
@@ -49,7 +47,7 @@
       <div class="lang" id="langRow" role="group" aria-label="Language"></div>
       <ul class="places" id="places"></ul>
       <button class="add" id="addBtn" type="button">Add a place</button>
-      <p class="ver">Version <span id="appVersion">0.1</span></p>
+      <button type="button" class="ver" id="verBtn"><span><span id="verLabel">Version</span> <span id="appVersion">0.1</span></span> · <span id="verMsg">Check for updates</span></button>
       <button class="back" id="closeManage" type="button">Done</button>
     </div>
   </section>

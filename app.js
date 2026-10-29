@@ -34,6 +34,13 @@ const COPY = {
     stillGo: "Open in Maps anyway",
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
+    versionLabel: "Version",
+    checkUpdates: "Check for updates",
+    checking: "Checking…",
+    upToDate: "Up to date",
+    updating: (v) => `Updating to ${v}…`,
+    cantCheck: "Can't check here",
+    offline: "No internet — can't check",
   },
   "zh-Hans": {
     ask: "想去哪儿?",
@@ -62,6 +69,13 @@ const COPY = {
     stillGo: "还是打开地图",
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
+    versionLabel: "版本",
+    checkUpdates: "检查更新",
+    checking: "正在检查…",
+    upToDate: "已是最新版本",
+    updating: (v) => `正在更新到 ${v}…`,
+    cantCheck: "这里查不到",
+    offline: "没有网络，无法检查",
   },
 };
 
@@ -131,6 +145,10 @@ const el = {
   places: $("places"),
   addBtn: $("addBtn"),
   closeManage: $("closeManage"),
+  verBtn: $("verBtn"),
+  verMsg: $("verMsg"),
+  verLabel: $("verLabel"),
+  appVersion: $("appVersion"),
 };
 
 /* ---------- rendering ---------- */
@@ -259,6 +277,8 @@ function openManage() {
   el.manageTitle.textContent = c.places;
   el.addBtn.textContent = c.add;
   el.closeManage.textContent = c.done;
+  el.verLabel.textContent = c.versionLabel;
+  el.verMsg.textContent = c.checkUpdates;
 
   el.langRow.replaceChildren(
     ...LANGS.map((lang) => {
@@ -327,6 +347,29 @@ function placeRow(place) {
 el.closeSheet.addEventListener("click", () => show(null));
 el.gear.addEventListener("click", openManage);
 el.closeManage.addEventListener("click", () => show(null));
+
+/* Check for updates: read version.json past any cache and compare with what is running.
+   There is no service worker here (PROJECT.md §7), so a cache-busted reload is all an update needs —
+   the fresh HTML carries new ?v= stamps and the browser fetches every file again. */
+el.verBtn.addEventListener("click", async () => {
+  const c = t();
+  el.verMsg.textContent = c.checking;
+  try {
+    const res = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(String(res.status));
+    const live = await res.json();
+    const mine = el.appVersion;
+    const same = mine.dataset.build ? live.build === mine.dataset.build : live.version === mine.textContent;
+    if (same) {
+      el.verMsg.textContent = c.upToDate;
+      return;
+    }
+    el.verMsg.textContent = c.updating(live.version);
+    location.replace(`${location.pathname}?v=${encodeURIComponent(live.build || live.version)}`);
+  } catch {
+    el.verMsg.textContent = navigator.onLine === false ? c.offline : c.cantCheck;
+  }
+});
 
 el.sheet.addEventListener("click", (e) => { if (e.target === el.sheet) show(null); });
 el.manage.addEventListener("click", (e) => { if (e.target === el.manage) show(null); });
