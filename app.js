@@ -250,9 +250,21 @@ function askLocation() {
   if (location && location.coord) return Promise.resolve(location);
   if (!navigator.geolocation) return Promise.resolve({ error: "unavailable" });
   return new Promise((resolve) => {
+    let settled = false;
+    let watchdog = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (watchdog) clearTimeout(watchdog);
+      resolve(value);
+    };
+    // geolocation's own `timeout` is not a guarantee: with the permission prompt open the browser can
+    // leave the call pending forever (seen on the public site), and an elderly user then stares at
+    // "正在获取您的位置…" with no way forward. This watchdog makes the recovery state arrive.
+    watchdog = setTimeout(() => finish({ error: "timeout" }), 10000);
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ coord: { lng: pos.coords.longitude, lat: pos.coords.latitude } }),
-      (err) => resolve({ error: err && err.code === 1 ? "denied" : err && err.code === 3 ? "timeout" : "unavailable" }),
+      (pos) => finish({ coord: { lng: pos.coords.longitude, lat: pos.coords.latitude } }),
+      (err) => finish({ error: err && err.code === 1 ? "denied" : err && err.code === 3 ? "timeout" : "unavailable" }),
       { timeout: 10000, maximumAge: 60000, enableHighAccuracy: false },
     );
   });
