@@ -16,9 +16,12 @@ const SAMPLE = process.argv.includes("--sample");
 
 function readKey() {
   if (process.env.TFNSW_KEY) return process.env.TFNSW_KEY.trim();
-  for (const p of [join(homedir(), ".config", "where-to-go", "tfnsw.key")]) {
+  // A plain key file, or an env file in ~/projects (the shape the other projects' secrets use).
+  for (const p of [join(homedir(), ".config", "where-to-go", "tfnsw.key"), join(homedir(), "projects", "tfnsw.env")]) {
     try {
-      const v = readFileSync(p, "utf8").trim();
+      const raw = readFileSync(p, "utf8");
+      const m = raw.match(/^\s*TFNSW_KEY\s*=\s*(.+?)\s*$/m);
+      const v = (m ? m[1] : raw).replace(/^["']|["']$/g, "").trim();
       if (v) return v;
     } catch { /* not there, keep looking */ }
   }
