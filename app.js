@@ -26,6 +26,11 @@ const COPY = {
     glyph: "Symbol",
     openMaps: "Open in Maps",
     looking: "Checking…",
+    locating: "Getting your location…",
+    locationOff: "Location is off. Allow it for this app, then try again.",
+    locationFailed: "Couldn't get your location. Try again.",
+    useMyLocation: "Use my location",
+    fromHome: "From home",
     demo: "SAMPLE DATA — no live transit yet",
     trip: (t) =>
       `${t.mode in COPY.en.modes ? COPY.en.modes[t.mode] : "Bus"} ${t.line} in ${t.waitMin} min, ${t.durationMin} min to get there.`,
@@ -59,6 +64,11 @@ const COPY = {
     glyph: "图标",
     openMaps: "打开地图",
     looking: "正在查询…",
+    locating: "正在获取您的位置…",
+    locationOff: "定位已关闭。请允许定位，再试一次。",
+    locationFailed: "暂时定位不到，请重试。",
+    useMyLocation: "使用我的位置",
+    fromHome: "从家出发",
     demo: "示例数据 — 还没接实时公交",
     // "路" is the bus-route suffix; a train line takes "号线", and ferry/light-rail numbers take neither.
     trip: (t) => {
@@ -147,6 +157,7 @@ const el = {
   stamp: $("stamp"),
   go: $("goBtn"),
   closeSheet: $("closeSheet"),
+  retryLoc: $("retryLoc"),
   manage: $("manage"),
   manageTitle: $("manageTitle"),
   langRow: $("langRow"),
@@ -201,38 +212,48 @@ function show(which) {
 /* ---------- the answer ---------- */
 
 let lookSeq = 0;
-let geoAsked = null;
+let currentPlace = null;
+let location = null; // {coord} once granted; never cache a failure, so "Use my location" can retry
 
-/** Where the traveller is starting from: the device, else the place called Home. Asked once per session. */
+/**
+ * Ask the device where it is. A failure is a state to report, not a reason to invent an origin:
+ * the old code returned null and the caller quietly assumed "you are at home", which is exactly the
+ * wrong assumption for someone already out, and produced "add a starting place" on the Home tile —
+ * an error about a place when the missing thing was permission.
+ */
 function askLocation() {
-  if (!geoAsked) {
-    geoAsked = new Promise((resolve) => {
-      if (!navigator.geolocation) return resolve(null);
-      const done = setTimeout(() => resolve(null), 5000);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => { clearTimeout(done); resolve({ coord: { lng: pos.coords.longitude, lat: pos.coords.latitude } }); },
-        () => { clearTimeout(done); resolve(null); },
-        { timeout: 5000, maximumAge: 120000, enableHighAccuracy: false },
-      );
-    });
-  }
-  return geoAsked;
+  if (location && location.coord) return Promise.resolve(location);
+  if (!navigator.geolocation) return Promise.resolve({ error: "unavailable" });
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ coord: { lng: pos.coords.longitude, lat: pos.coords.latitude } }),
+      (err) => resolve({ error: err && err.code === 1 ? "denied" : err && err.code === 3 ? "timeout" : "unavailable" }),
+      { timeout: 10000, maximumAge: 60000, enableHighAccuracy: false },
+    );
+  });
 }
 
 async function originFor(place) {
   const loc = await askLocation();
-  if (loc) return loc;
+  if (loc.coord) {
+    location = loc;
+    return { coord: loc.coord };
+  }
+  // No device location: the place called Home is a fallback for somewhere else, but it cannot be the
+  // origin when the destination IS home, and it must be said out loud rather than assumed.
   const home = state.places.find((p) => p.id === "home" && p.address);
-  if (home && home.id !== place.id) return { address: home.address };
-  return null;
+  if (home && home.id !== place.id) return { address: home.address, fromHome: true, error: loc.error };
+  return { error: loc.error };
 }
 
 async function openAnswer(place) {
   const c = t();
+  currentPlace = place;
   show("answer");
   el.sheetTitle.textContent = nameOf(place);
-  el.summary.textContent = c.looking;
+  el.summary.textContent = c.locating;
   el.stamp.hidden = true;
+  el.retryLoc.hidden = true;
   const seq = ++lookSeq;
   let mode = "transit";
   el.closeSheet.textContent = c.back;
@@ -242,7 +263,7 @@ async function openAnswer(place) {
   el.go.href = mapsUrl(place, mode);
   el.go.textContent = c.openMaps;
   el.go.hidden = !(place.address || place.coord);
-  if (el.go.hidden) {
+  if (!(place.address || place.coord) && !place.coord) {
     // Nothing to hand off to, and nothing to look up: say the one useful thing and stop.
     el.summary.textContent = c.needAddress;
     return;
@@ -251,10 +272,14 @@ async function openAnswer(place) {
   try {
     const origin = await originFor(place);
     if (seq !== lookSeq) return;
-    if (!origin) {
-      el.summary.textContent = c.noOrigin;
+    if (origin.error && !origin.address) {
+      // Permission is the blocker, so say that and offer the one action that can fix it.
+      el.summary.textContent = origin.error === "denied" ? c.locationOff : c.locationFailed;
+      el.retryLoc.textContent = c.useMyLocation;
+      el.retryLoc.hidden = false;
       el.go.textContent = c.stillGo;
     } else {
+      el.summary.textContent = c.looking;
       const trip = await getTrip(place, { origin });
       if (seq !== lookSeq) return;
       mode = trip.mode;
@@ -264,6 +289,10 @@ async function openAnswer(place) {
         el.stamp.textContent = c.demo;
         el.stamp.dataset.kind = "demo";
         el.stamp.hidden = false;
+      } else if (origin.fromHome) {
+        el.stamp.textContent = c.fromHome;
+        el.stamp.dataset.kind = "note";
+        el.stamp.hidden = false;
       }
     }
   } catch (err) {
@@ -272,7 +301,7 @@ async function openAnswer(place) {
     const why = err && err.message;
     el.summary.textContent = why === "no-address" ? c.needAddress : why === "no-origin" ? c.noOrigin : c.failed;
     el.go.textContent = c.stillGo;
-    el.go.hidden = !place.address;
+    el.go.hidden = !(place.address || place.coord);
   }
   if (el.go.hidden) return;
   el.go.href = mapsUrl(place, mode);
@@ -442,6 +471,14 @@ function placeRow(place) {
 /* ---------- wiring ---------- */
 
 el.closeSheet.addEventListener("click", () => show(null));
+
+/* "Use my location": forget the refused attempt and ask again. The permission prompt only appears on
+ * a real gesture, which this is, so a person who just turned location back on in Settings gets a new
+ * chance without reloading the app. */
+el.retryLoc.addEventListener("click", () => {
+  location = null;
+  if (currentPlace) openAnswer(currentPlace);
+});
 el.gear.addEventListener("click", openManage);
 el.closeManage.addEventListener("click", () => show(null));
 

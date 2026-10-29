@@ -184,6 +184,7 @@ body {
   color: var(--ink-soft);
 }
 .stamp[data-kind="demo"] { color: var(--danger); font-weight: 700; letter-spacing: 0.06em; }
+.stamp[data-kind="note"] { color: var(--ink-soft); font-weight: 600; }
 
 .go, .add {
   display: flex;
@@ -204,6 +205,25 @@ body {
 
 /* Same trap as the sheets: `display:flex` beats the hidden attribute. */
 .go[hidden] { display: none; }
+
+/* Offered only when the origin is missing because permission was refused: one action that can fix it. */
+.retry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: var(--tap);
+  margin-top: 10px;
+  border: 2px solid var(--accent);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.retry[hidden] { display: none; }
 
 .back {
   display: block;
