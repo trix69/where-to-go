@@ -9,7 +9,7 @@ import http from "node:http";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { fetchTrip } from "./core.mjs";
+import { fetchTrip, resolvePlace } from "./core.mjs";
 
 const PORT = Number(process.env.PORT || 8802);
 const SAMPLE = process.argv.includes("--sample");
@@ -47,12 +47,32 @@ function send(res, status, body) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   if (req.method === "OPTIONS") return send(res, 204, {});
+
+  // /resolve?q=<address> — used by the helper screen while a place is being set up, where a human can
+  // see and correct the match. Deliberately not called at travel time.
+  if (url.pathname === "/resolve") {
+    const q = (url.searchParams.get("q") || "").trim();
+    if (!q) return send(res, 400, { ok: false, error: "no-query" });
+    if (SAMPLE) return send(res, 200, { ok: true, name: `${q} (sample)`, coord: { lng: 151.20629, lat: -33.88408 } });
+    if (!KEY) return send(res, 503, { ok: false, error: "no-key" });
+    const hit = await resolvePlace({ key: KEY, text: q });
+    if (!hit) return send(res, 200, { ok: false, error: "not-found" });
+    return send(res, 200, { ok: true, name: hit.name, coord: hit.coord });
+  }
+
   if (url.pathname !== "/trip") return send(res, 404, { ok: false, error: "not-found" });
 
   const to = (url.searchParams.get("to") || "").trim();
   const from = (url.searchParams.get("from") || "").trim();
   const coord = (url.searchParams.get("fromCoord") || "").trim();
-  if (!to) return send(res, 400, { ok: false, error: "no-destination" });
+  const tc = (url.searchParams.get("toCoord") || "").trim();
+
+  let toCoord;
+  if (tc) {
+    const [lng, lat] = tc.split(",").map(Number);
+    if (Number.isFinite(lng) && Number.isFinite(lat)) toCoord = { lng, lat };
+  }
+  if (!to && !toCoord) return send(res, 400, { ok: false, error: "no-destination" });
 
   let fromCoord;
   if (coord) {
@@ -60,7 +80,6 @@ const server = http.createServer(async (req, res) => {
     if (Number.isFinite(lng) && Number.isFinite(lat)) fromCoord = { lng, lat };
   }
   if (!from && !fromCoord) return send(res, 400, { ok: false, error: "no-origin" });
-
   if (SAMPLE) {
     return send(res, 200, {
       ok: true, provider: "sample", mode: "bus", line: "343",
@@ -70,11 +89,11 @@ const server = http.createServer(async (req, res) => {
   }
   if (!KEY) return send(res, 503, { ok: false, error: "no-key" });
 
-  const ck = `${from}|${fromCoord ? `${fromCoord.lng},${fromCoord.lat}` : ""}|${to}`;
+  const ck = `${from}|${fromCoord ? `${fromCoord.lng},${fromCoord.lat}` : ""}|${to}|${toCoord ? `${toCoord.lng},${toCoord.lat}` : ""}`;
   const hit = CACHE.get(ck);
   if (hit && Date.now() - hit.at < CACHE_MS) return send(res, 200, hit.body);
 
-  const out = await fetchTrip({ key: KEY, to, from, fromCoord });
+  const out = await fetchTrip({ key: KEY, to, from, fromCoord, toCoord });
   if (out.ok) CACHE.set(ck, { at: Date.now(), body: out });
   send(res, out.status || (out.ok ? 200 : 502), out);
 });

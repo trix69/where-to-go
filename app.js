@@ -4,7 +4,7 @@
  * No framework, no build step, no network beyond the transit lookup.
  */
 
-import { getTrip, mapsUrl, usingMock } from "./transit.js?v=0.1";
+import { getTrip, mapsUrl, usingMock, resolveAddress } from "./transit.js?v=0.1";
 
 const STORE = "whereToGo.v1";
 
@@ -34,6 +34,10 @@ const COPY = {
     stillGo: "Open in Maps anyway",
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
+    resolving: "Looking up the address…",
+    matched: (n) => `Routes to: ${n}`,
+    checkMatch: (n, km) => `Check this: ${n}${km ? ` (${km} km away)` : ""}`,
+    notFound: "Nothing matched — check the address",
     versionLabel: "Version",
     checkUpdates: "Check for updates",
     checking: "Checking…",
@@ -69,6 +73,10 @@ const COPY = {
     stillGo: "还是打开地图",
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
+    resolving: "正在查找地址…",
+    matched: (n) => `将到：${n}`,
+    checkMatch: (n, km) => `请确认：${n}${km ? `（约${km}公里）` : ""}`,
+    notFound: "找不到这个地址，请检查",
     versionLabel: "版本",
     checkUpdates: "检查更新",
     checking: "正在检查…",
@@ -233,8 +241,8 @@ async function openAnswer(place) {
   // address has nowhere to hand off to, so that button is simply not offered.
   el.go.href = mapsUrl(place, mode);
   el.go.textContent = c.openMaps;
-  el.go.hidden = !place.address;
-  if (!place.address) {
+  el.go.hidden = !(place.address || place.coord);
+  if (el.go.hidden) {
     // Nothing to hand off to, and nothing to look up: say the one useful thing and stop.
     el.summary.textContent = c.needAddress;
     return;
@@ -307,10 +315,91 @@ function field(labelText, value, onInput, extraClass) {
   return label;
 }
 
+/* ---------- geocoding, at setup only ---------- */
+
+const resolveTimers = new Map();
+
+/** Look the address up while the helper is still on the screen, and say what it matched. */
+function scheduleResolve(place, status) {
+  if (usingMock()) return;                       // no proxy configured: nothing to ask
+  clearTimeout(resolveTimers.get(place.id));
+  status.hidden = false;
+  if (!place.address.trim()) {
+    status.hidden = true;
+    return;
+  }
+  status.dataset.kind = "pending";
+  status.textContent = t().resolving;
+  resolveTimers.set(place.id, setTimeout(() => runResolve(place, status), 700));
+}
+
+/* stop_finder matches words, not places: "Centennial Park" came back as a park near Dubbo, 300 km
+ * away, and "1 Grand Drive, Centennial Park" still did. Two cheap guards make that visible instead of
+ * green — no shared word between what was typed and what came back, or a match outside greater
+ * Sydney. Neither blocks the save; the helper can see the problem and fix the address. */
+const SYDNEY = { lat: -33.8688, lng: 151.2093 };
+
+// Words too generic to prove anything: "Sydney" and "Park" are in half the suburbs, so a match that
+// shares only those is not a match. What is left is the part that identifies the place.
+const GENERIC = new Set([
+  "sydney", "nsw", "new", "south", "wales", "australia", "the", "and", "of",
+  "street", "st", "road", "rd", "avenue", "ave", "drive", "dr", "lane", "ln", "place", "pl",
+  "park", "parade", "pde", "highway", "hwy", "level", "shop", "suite", "unit",
+]);
+
+function words(s) {
+  return String(s).toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
+    .split(" ")
+    .filter((w) => w.length > 2 && !GENERIC.has(w));
+}
+
+function kmApart(a, b) {
+  const R = 6371, rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function suspectMatch(address, hit) {
+  const typed = new Set(words(address));
+  const shared = words(hit.name).some((w) => typed.has(w));
+  const away = Math.round(kmApart(hit.coord, SYDNEY));
+  return { suspicious: !shared || away > 60, away: away > 60 ? away : 0 };
+}
+
+async function runResolve(place, status) {
+  const c = t();
+  const hit = await resolveAddress(place.address);
+  if (hit) {
+    place.coord = hit.coord;
+    place.resolvedName = hit.name;
+    const { suspicious, away } = suspectMatch(place.address, hit);
+    status.dataset.kind = suspicious ? "warn" : "ok";
+    status.textContent = suspicious ? c.checkMatch(hit.name, away) : c.matched(hit.name);
+  } else {
+    place.coord = null;
+    place.resolvedName = null;
+    status.dataset.kind = "warn";
+    status.textContent = c.notFound;
+  }
+  save();
+}
+
 function placeRow(place) {
   const c = t();
   const li = document.createElement("li");
   li.className = "place";
+
+  const status = document.createElement("p");
+  status.className = "resolved span2";
+  // Only meaningful with a provider configured: in mock mode nothing was looked up, so claiming
+  // "routes to X" would be a promise the app cannot keep.
+  status.hidden = usingMock() || !place.resolvedName;
+  if (place.resolvedName) {
+    status.dataset.kind = "ok";
+    status.textContent = c.matched(place.resolvedName);
+  }
 
   const glyph = field(c.glyph, place.glyph, (v) => { place.glyph = v; save(); render(); }, "glyph");
   glyph.querySelector("input").setAttribute("maxlength", "4");
@@ -324,7 +413,15 @@ function placeRow(place) {
       render();
     }),
     glyph,
-    field(c.address, place.address, (v) => { place.address = v; save(); }, "span2"),
+    field(c.address, place.address, (v) => {
+      place.address = v;
+      // A changed address is no longer the address that was confirmed, so the confirmation goes.
+      place.coord = null;
+      place.resolvedName = null;
+      save();
+      scheduleResolve(place, status);
+    }, "span2"),
+    status,
   );
 
   const del = document.createElement("button");

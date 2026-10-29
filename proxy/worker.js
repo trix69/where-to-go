@@ -5,7 +5,7 @@
  *
  * GET /trip?to=<address>&from=<address>|fromCoord=<lng>,<lat>
  */
-import { fetchTrip } from "./core.mjs";
+import { fetchTrip, resolvePlace } from "./core.mjs";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*", // GET only, no credentials, no cookies: nothing to protect
@@ -26,12 +26,29 @@ export default {
     if (request.method !== "GET") return json(405, { ok: false, error: "method" });
 
     const url = new URL(request.url);
+
+    // Setup-time geocoding: the helper screen shows the match and the person confirms it.
+    if (url.pathname === "/resolve") {
+      const q = (url.searchParams.get("q") || "").trim();
+      if (!q) return json(400, { ok: false, error: "no-query" });
+      const hit = await resolvePlace({ key: env.TFNSW_KEY, text: q });
+      if (!hit) return json(200, { ok: false, error: "not-found" });
+      return json(200, { ok: true, name: hit.name, coord: hit.coord });
+    }
+
     if (url.pathname !== "/trip") return json(404, { ok: false, error: "not-found" });
 
     const to = (url.searchParams.get("to") || "").trim();
     const from = (url.searchParams.get("from") || "").trim();
     const coord = (url.searchParams.get("fromCoord") || "").trim();
-    if (!to) return json(400, { ok: false, error: "no-destination" });
+    const tc = (url.searchParams.get("toCoord") || "").trim();
+
+    let toCoord;
+    if (tc) {
+      const [lng, lat] = tc.split(",").map(Number);
+      if (Number.isFinite(lng) && Number.isFinite(lat)) toCoord = { lng, lat };
+    }
+    if (!to && !toCoord) return json(400, { ok: false, error: "no-destination" });
 
     let fromCoord;
     if (coord) {
@@ -40,7 +57,7 @@ export default {
     }
     if (!from && !fromCoord) return json(400, { ok: false, error: "no-origin" });
 
-    const out = await fetchTrip({ key: env.TFNSW_KEY, to, from, fromCoord });
+    const out = await fetchTrip({ key: env.TFNSW_KEY, to, from, fromCoord, toCoord });
     return json(out.status || (out.ok ? 200 : 502), out);
   },
 };

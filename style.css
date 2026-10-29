@@ -279,6 +279,11 @@ body {
   font-size: 1.02rem;
 }
 .place .span2 { grid-column: 1 / -1; }
+/* Resolution result: the thing that makes a wrong geocode visible while it is still cheap to fix. */
+.resolved { margin: 2px 0 0; font-size: 0.98rem; line-height: 1.35; }
+.resolved[data-kind="pending"] { color: var(--ink-soft); }
+.resolved[data-kind="ok"] { color: var(--accent); font-weight: 600; }
+.resolved[data-kind="warn"] { color: var(--danger); font-weight: 600; }
 /* An empty text input defaults to ~20 characters wide and was stealing the name column. */
 .place .glyph { width: 5.5rem; }
 .place .del {

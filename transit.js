@@ -45,16 +45,38 @@ function mockTrip(place) {
 }
 
 /**
- * @param {{address: string, name?: object}} place  destination
+ * Geocode an address through the proxy, for the helper screen only.
+ *
+ * This is the one place a fuzzy address is turned into something exact, and it happens while a
+ * person is looking at the screen and can fix a wrong match. Travel-time lookups then use the stored
+ * coordinate, so a bad match cannot send someone to another suburb (PROJECT.md §7).
+ * Returns null in mock mode, or when the provider finds nothing.
+ */
+export async function resolveAddress(text) {
+  if (!text || usingMock()) return null;
+  const res = await fetch(`${CONFIG.proxyBase}/resolve?q=${encodeURIComponent(text)}`, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(9000),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body || body.ok !== true) return null;
+  return { coord: body.coord, name: body.name };
+}
+
+/**
+ * @param {{address: string, coord?: {lng: number, lat: number}, name?: object}} place  destination
  * @param {{origin?: {coord?: {lng:number, lat:number}, address?: string}}} [opts]
  * @returns {Promise<{ok: true, provider: string, mode: string, line: string|number,
  *                    waitMin: number, durationMin: number, realtime: boolean, changes: number}>}
  */
 export async function getTrip(place, opts = {}) {
-  if (!place || !place.address) throw new Error("no-address");
+  if (!place || (!place.address && !place.coord)) throw new Error("no-address");
   if (usingMock()) return mockTrip(place);
 
-  const q = new URLSearchParams({ to: place.address });
+  const q = new URLSearchParams();
+  // A confirmed place is sent as coordinates: no geocoding at travel time, nothing to get wrong.
+  if (place.coord && Number.isFinite(place.coord.lng)) q.set("toCoord", `${place.coord.lng},${place.coord.lat}`);
+  else q.set("to", place.address);
   const origin = opts.origin || {};
   if (origin.coord && Number.isFinite(origin.coord.lng)) {
     q.set("fromCoord", `${origin.coord.lng},${origin.coord.lat}`);
