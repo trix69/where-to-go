@@ -86,7 +86,14 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
       <label class="sr-only" id="nameLabel" for="placeName">Name</label>
-      <input id="placeName" class="title-input" type="text" autocomplete="off">
+      <!-- The pencil says "this is editable" without saying it in words. Decorative: the field is
+           already a field, and its label is the sr-only one above. -->
+      <div class="namerow">
+        <input id="placeName" class="title-input" type="text" autocomplete="off">
+        <span class="name-edit" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </div>
 
       <!-- The symbol is the control: tapping it opens the chooser (Trix). -->
       <div class="glyphrow">
