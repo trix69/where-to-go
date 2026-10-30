@@ -47,29 +47,28 @@ function mockTrip(place) {
 }
 
 /**
- * Geocode an address through the proxy, for the helper screen only.
+ * Every address the geocoder will own up to, best first.
  *
- * This is the one place a fuzzy address is turned into something exact, and it happens while a
- * person is looking at the screen and can fix a wrong match. Travel-time lookups then use the stored
- * coordinate, so a bad match cannot send someone to another suburb (PROJECT.md §7).
- * Returns null in mock mode, or when the provider finds nothing.
+ * The helper picks from this list — nothing typed is ever stored as an address, because text that
+ * merely looks like an address is what sent people to the wrong suburb. Setup time is the only place a
+ * fuzzy string becomes exact, and it happens while a person is looking at the candidates.
+ *
+ * Returns [] in mock mode, when the provider is not TfNSW, or when nothing matched.
  */
-export async function resolveAddress(text) {
-  if (!text || usingMock()) return null;
-  const res = await fetch(`${CONFIG.proxyBase}/resolve?q=${encodeURIComponent(text)}`, {
+export async function searchAddresses(text) {
+  if (!text || !text.trim() || usingMock()) return [];
+  const res = await fetch(`${CONFIG.proxyBase}/resolve?q=${encodeURIComponent(text.trim())}`, {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(9000),
   });
   const body = await res.json().catch(() => null);
   // A sample or unknown provider must never hand back a coordinate: travel time trusts whatever is
   // stored here, so "sample" would leak invented data into a real answer (R6.4).
-  if (!res.ok || !body || body.ok !== true || body.provider !== "tfnsw") return null;
-  return {
-    coord: body.coord,
-    name: body.name,
-    locality: body.locality || "",
-    others: Array.isArray(body.matches) ? body.matches : [],
-  };
+  if (!res.ok || !body || body.ok !== true || body.provider !== "tfnsw") return [];
+  return [
+    { name: body.name, coord: body.coord, locality: body.locality || "" },
+    ...(Array.isArray(body.matches) ? body.matches : []),
+  ].filter((m) => m && m.name && m.coord);
 }
 
 /**

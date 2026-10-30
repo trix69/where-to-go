@@ -4,7 +4,7 @@
  * No framework, no build step, no network beyond the transit lookup.
  */
 
-import { getTrip, mapsUrl, usingMock, resolveAddress } from "./transit.js?v=0.1";
+import { getTrip, mapsUrl, usingMock, searchAddresses } from "./transit.js?v=0.1";
 
 const STORE = "whereToGo.v1";
 
@@ -30,7 +30,6 @@ const COPY = {
     locationOff: "Location is off. Allow it for this app, then try again.",
     locationFailed: "Couldn't get your location. Try again.",
     useMyLocation: "Use my location",
-    routeTo: (n) => `Points to: ${n}`,
     gateChecking: "Checking your location…",
     gateAllow: "Allow location",
     gateSkip: "Look around",
@@ -50,10 +49,8 @@ const COPY = {
     stillGo: "Open in Maps anyway",
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
-    resolving: "Looking up the address…",
-    matched: (n) => `Routes to: ${n}`,
+    noMatches: "No match — try another spelling.",
     checkMatch: (n, km) => `Check this: ${n}${km ? ` (${km} km away)` : ""}`,
-    notFound: "Nothing matched — check the address",
     settingsTitle: "Settings",
     language: "Language",
     appearance: "Appearance",
@@ -90,7 +87,6 @@ const COPY = {
     locationOff: "定位已关闭。请允许定位，再试一次。",
     locationFailed: "暂时定位不到，请重试。",
     useMyLocation: "使用我的位置",
-    routeTo: (n) => `定位到：${n}`,
     gateChecking: "正在确认位置…",
     gateAllow: "允许定位",
     gateSkip: "先看看",
@@ -117,10 +113,8 @@ const COPY = {
     stillGo: "还是打开地图",
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
-    resolving: "正在查找地址…",
-    matched: (n) => `将到：${n}`,
+    noMatches: "没有找到，请换个写法。",
     checkMatch: (n, km) => `请确认：${n}${km ? `（约${km}公里）` : ""}`,
-    notFound: "找不到这个地址，请检查",
     settingsTitle: "设置",
     language: "语言",
     appearance: "外观",
@@ -331,7 +325,6 @@ const el = {
   sheet: $("sheet"),
   sheetTitle: $("sheetTitle"),
   destAddr: $("destAddr"),
-  destMatch: $("destMatch"),
   summary: $("summary"),
   stamp: $("stamp"),
   go: $("goBtn"),
@@ -344,13 +337,16 @@ const el = {
   langLabel: $("langLabel"),
   themeRow: $("themeRow"),
   themeLabel: $("themeLabel"),
+  iconLabel: $("iconLabel"),
   place: $("place"),
   placeTitle: $("placeTitle"),
   placeName: $("placeName"),
-  placeGlyph: $("placeGlyph"),
+  placeIcons: $("placeIcons"),
+  nameLabel: $("nameLabel"),
+  addrLabel: $("addrLabel"),
   placeAddr: $("placeAddr"),
-  placeStatus: $("placeStatus"),
-  placeAlts: $("placeAlts"),
+  addrList: $("addrList"),
+  placeNote: $("placeNote"),
   placeWarn: $("placeWarn"),
   placeDel: $("placeDel"),
   placeDone: $("placeDone"),
@@ -398,7 +394,8 @@ function tile(place) {
     if (!place.address && !place.coord) return openPlace(place);
     // Flagged as a bad match when it was set up: ask for the address to be fixed instead of answering
     // from a coordinate nobody confirmed (R6.3, R7.1, R10.1).
-    if (place.suspect) return openPlace(place);
+    const drifted = place.resolvedName && place.address && place.resolvedName !== place.address;
+    if (place.suspect || drifted) return openPlace(place);
     openAnswer(place);
   });
   li.append(b);
@@ -508,14 +505,12 @@ async function openAnswer(place, opts = {}) {
     el.stamp.hidden = true;
     el.retryLoc.hidden = true;
   }
-  // Where this trip is actually going: the saved address, and — when it differs — the name TfNSW
-  // matched, because that is what the coordinates were taken from.
+  // Where this trip is going, in the words that were picked from the address list. Nothing typed
+  // reaches here, so there is nothing to qualify: the address and the coordinate are the same place.
   const addr = (place.address || "").trim();
   const matched = (place.resolvedName || "").trim();
   el.destAddr.textContent = addr || matched;
   el.destAddr.hidden = !(addr || matched);
-  el.destMatch.textContent = matched && matched !== addr ? c.routeTo(matched) : "";
-  el.destMatch.hidden = !(matched && matched !== addr);
   const seq = ++lookSeq;
   let mode = "transit";
   el.closeSheet.textContent = c.back;
@@ -547,13 +542,6 @@ async function openAnswer(place, opts = {}) {
       if (seq !== lookSeq) return;
       mode = trip.mode;
       el.summary.textContent = c.trip(trip, clock(trip.arriveISO));
-      // The name that came back with the trip, not only the one the helper stored: on an unresolved
-      // place these differ, and the difference is the whole warning (R11.1, R5.2).
-      const tripName = (trip.resolvedName || "").trim();
-      if (tripName && tripName !== addr) {
-        el.destMatch.textContent = c.routeTo(tripName);
-        el.destMatch.hidden = false;
-      }
       // Anything that is not the live provider gets said out loud, in the answer card.
       if (trip.provider !== "tfnsw") {
         el.stamp.textContent = c.demo;
@@ -660,33 +648,174 @@ function openPlace(place) {
   editing = place;
   deleteArmed = false;
   el.placeTitle.textContent = nameOf(place);
+  el.nameLabel.textContent = c.name;
+  el.addrLabel.textContent = c.address;
+  el.iconLabel.textContent = c.glyph;
   el.placeName.value = nameOf(place);
-  el.placeGlyph.value = place.glyph || "";
   el.placeAddr.value = place.address || "";
-  el.placeStatus.hidden = true;
-  el.placeAlts.replaceChildren();
   el.placeDel.textContent = c.delete;
   el.placeDel.classList.remove("confirm");
   el.placeWarn.hidden = true;
+  el.placeNote.hidden = true;
   el.placeDone.textContent = c.done;
-  if (place.resolvedName && !usingMock()) {
-    el.placeStatus.hidden = false;
-    el.placeStatus.dataset.kind = "ok";
-    el.placeStatus.textContent = c.matched(place.resolvedName);
-  }
+  el.placeDone.disabled = false;
+  closeList();
+  renderIcons();
+  refreshDone();
   show("place");
 }
 
-/* ---------- geocoding, while the overlay is open ---------- */
+/* ---------- the address list ----------
+ * Typing searches; picking is the only way an address is stored. A free-text address is what sent
+ * people to another suburb, so the field is a combobox whose only outcomes are the geocoder's own
+ * answers — and 完成 stays disabled until one of them is chosen.
+ */
 
-/* stop_finder matches words, not places: "Centennial Park" came back as a park near Dubbo, 300 km
- * away, and "1 Grand Drive, Centennial Park" still did. Two cheap guards make that visible instead of
- * green — no shared word between what was typed and what came back, or a match outside greater
- * Sydney. Neither blocks the save; the helper can see the problem and fix the address. */
+const ICONS = [
+  "🏠", "🧑‍⚕️", "🛒", "👨‍👩‍👧", "🏫", "🌳",
+  "🏥", "🏦", "⛪", "🕌", "🏛️", "🚉",
+  "🛍️", "🧺", "🍜", "☕", "🎓", "🏋️",
+  "💊", "📮", "🎯", "📍", "🧓", "🐕",
+];
+
+let searchTimer = null;
+let searchSeq = 0;
+let results = [];
+
+function renderIcons() {
+  const chosen = (editing && editing.glyph) || "";
+  el.placeIcons.replaceChildren(
+    ...ICONS.map((g) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "icon";
+      b.textContent = g;
+      b.setAttribute("aria-pressed", String(g === chosen));
+      b.addEventListener("click", () => {
+        if (!editing) return;
+        editing.glyph = g;
+        save();
+        render();
+        renderIcons();
+      });
+      return b;
+    }),
+  );
+}
+
+function closeList() {
+  el.addrList.hidden = true;
+  el.addrList.replaceChildren();
+  el.placeAddr.setAttribute("aria-expanded", "false");
+  results = [];
+}
+
+function showRow(node) {
+  const li = document.createElement("li");
+  li.append(node);
+  el.addrList.append(li);
+  el.addrList.hidden = false;
+  el.placeAddr.setAttribute("aria-expanded", "true");
+}
+
+function renderEmpty() {
+  el.addrList.replaceChildren();
+  const p = document.createElement("p");
+  p.className = "a-empty";
+  p.textContent = t().noMatches;
+  showRow(p);
+}
+
+function pick(index) {
+  const hit = results[index];
+  if (!hit || !editing) return;
+  const typed = el.placeAddr.value.trim();
+  const { suspicious, away } = suspectMatch(typed || hit.name, hit);
+  editing.address = hit.name;
+  editing.coord = hit.coord;
+  editing.resolvedName = hit.name;
+  editing.suspect = suspicious;
+  el.placeAddr.value = hit.name;
+  closeList();
+  // The only warning left: a candidate in another suburb. Not green, and it does not block the save —
+  // the helper can see the name they picked and fix it if it is wrong.
+  el.placeNote.hidden = !suspicious;
+  el.placeNote.textContent = suspicious ? t().checkMatch(hit.name, away) : "";
+  save();
+  render();
+  refreshDone();
+}
+
+function renderList() {
+  el.addrList.replaceChildren();
+  results.forEach((m, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "option");
+    const name = document.createElement("span");
+    name.className = "a-name";
+    name.textContent = m.name;
+    b.append(name);
+    if (m.locality && !m.name.includes(m.locality)) {
+      // The suburb is what tells two identically named places apart.
+      const loc = document.createElement("span");
+      loc.className = "a-loc";
+      loc.textContent = m.locality;
+      b.append(loc);
+    }
+    b.addEventListener("click", () => pick(i));
+    showRow(b);
+  });
+}
+
+function refreshDone() {
+  el.placeDone.disabled = !canSave();
+}
+
+function canSave() {
+  if (!editing) return false;
+  const typed = el.placeAddr.value.trim();
+  if (!typed) return true;                                  // no address is a valid, honest state
+  return Boolean(editing.coord) && typed === (editing.address || "").trim();
+}
+
+function scheduleSearch() {
+  clearTimeout(searchTimer);
+  closeList();                 // stale rows from the previous query must not stay tappable
+  const text = el.placeAddr.value;
+  const seq = ++searchSeq;
+  if (!text.trim() || usingMock()) {
+    refreshDone();
+    return;
+  }
+  searchTimer = setTimeout(async () => {
+    const found = await searchAddresses(text);
+    if (seq !== searchSeq || !editing) return;              // a newer keystroke or another place
+    // Only candidates that share something with what was typed. stop_finder answers almost anything
+    // ("12 Crown Street" → a cafe called "Where Ya Bean?" by word shape), and a list of plausible-
+    // looking nonsense is how a wrong destination gets picked.
+    results = found.filter((hit) => plausible(text, hit));
+    if (!results.length) renderEmpty();
+    else renderList();
+  }, 350);
+}
+
+/** Does this candidate have anything to do with what was typed? */
+function plausible(text, hit) {
+  const typed = new Set(words(text));
+  if (words(hit.name).some((w) => typed.has(w))) return true;
+  return words(hit.locality || "").some((w) => typed.has(w));
+}
+
+/* ---------- is this match believable? ----------
+ * stop_finder matches words, not places: "Centennial Park" came back as a park 15 km away and
+ * "12 Crown Street, Sydney" as a school in Crows Nest. Two cheap signals, locality first: a hit whose
+ * suburb the person did not type, or one with no identifying word in common, is shown in amber and
+ * never becomes a travel-time coordinate (R6.2, R7.4, R10.1).
+ */
 const SYDNEY = { lat: -33.8688, lng: 151.2093 };
 
-// Words too generic to prove anything: "Sydney" and "Park" are in half the suburbs, so a match that
-// shares only those is not a match. What is left is the part that identifies the place.
+// Words too generic to prove anything: "Sydney" and "Park" are in half the suburbs.
 const GENERIC = new Set([
   "sydney", "nsw", "new", "south", "wales", "australia", "the", "and", "of",
   "street", "st", "road", "rd", "avenue", "ave", "drive", "dr", "lane", "ln", "place", "pl",
@@ -694,7 +823,7 @@ const GENERIC = new Set([
 ]);
 
 function words(s) {
-  return String(s).toLowerCase()
+  return String(s || "").toLowerCase()
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
     .split(" ")
     .filter((w) => w.length > 2 && !GENERIC.has(w));
@@ -710,81 +839,10 @@ function kmApart(a, b) {
 function suspectMatch(address, hit) {
   const typed = new Set(words(address));
   const shared = words(hit.name).some((w) => typed.has(w));
-  // The suburb stop_finder itself reported is the strongest signal available: "12 Crown Street,
-  // Sydney" came back in Crows Nest while sharing no identifying word with what was typed, and
-  // "Camperdown" in the typed address matches the locality on a good hit.
   const locality = words(hit.locality || "");
   const localityOk = locality.length === 0 || locality.some((w) => typed.has(w));
   const away = Math.round(kmApart(hit.coord, SYDNEY));
   return { suspicious: !shared || !localityOk || away > 60, away: away > 60 ? away : 0 };
-}
-
-function scheduleResolve(place) {
-  if (usingMock()) return;                       // no proxy configured: nothing to ask
-  clearTimeout(resolveTimer);
-  if (!place.address.trim()) {
-    el.placeStatus.hidden = true;
-    return;
-  }
-  el.placeStatus.hidden = false;
-  el.placeStatus.dataset.kind = "pending";
-  el.placeStatus.textContent = t().resolving;
-  resolveTimer = setTimeout(() => runResolve(place), 700);
-}
-
-function renderAlternatives(place, others) {
-  el.placeAlts.replaceChildren(
-    ...others.map((m) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "origin";
-      // The suburb is the difference between two parks with the same name (R10.1).
-      b.textContent = m.locality && !m.name.includes(m.locality) ? `${m.name} · ${m.locality}` : m.name;
-      b.addEventListener("click", () => {
-        const { suspicious, away } = suspectMatch(place.address, m);
-        place.coord = m.coord;
-        place.resolvedName = m.name;
-        place.suspect = suspicious;
-        save();
-        // Picking from the list is a choice, but it is not a check: if the guard still objects, say so.
-        el.placeStatus.dataset.kind = suspicious ? "warn" : "ok";
-        el.placeStatus.textContent = suspicious ? t().checkMatch(m.name, away) : t().matched(m.name);
-        el.placeAlts.replaceChildren();
-      });
-      return b;
-    }),
-  );
-}
-
-async function runResolve(place) {
-  const c = t();
-  const hit = await resolveAddress(place.address);
-  if (editing !== place) return;                 // the helper moved on to another place
-  el.placeAlts.replaceChildren();
-  if (hit) {
-    const { suspicious, away } = suspectMatch(place.address, hit);
-    if (suspicious) {
-      // Warned, therefore not confirmed: storing the coordinate here is what let a 15 km-wrong park
-      // drive a real answer while the warning was only on the helper's screen (R6.2, R7.4).
-      place.coord = null;
-      place.suspect = true;
-    } else {
-      place.coord = hit.coord;
-      place.suspect = false;
-    }
-    place.resolvedName = hit.name;
-    el.placeStatus.dataset.kind = suspicious ? "warn" : "ok";
-    el.placeStatus.textContent = suspicious ? c.checkMatch(hit.name, away) : c.matched(hit.name);
-    // A wrong first match is the common failure, and stop_finder gave us the runners-up: let the
-    // helper pick the address they meant instead of leaving them to retype it.
-    if (suspicious && hit.others && hit.others.length) renderAlternatives(place, hit.others);
-  } else {
-    place.coord = null;
-    place.resolvedName = null;
-    el.placeStatus.dataset.kind = "warn";
-    el.placeStatus.textContent = c.notFound;
-  }
-  save();
 }
 
 /* ---------- wiring ---------- */
@@ -811,21 +869,31 @@ el.placeName.addEventListener("input", () => {
   render();
 });
 
-el.placeGlyph.addEventListener("input", () => {
-  if (!editing) return;
-  editing.glyph = el.placeGlyph.value;
-  save();
-  render();
-});
-
 el.placeAddr.addEventListener("input", () => {
   if (!editing) return;
-  editing.address = el.placeAddr.value;
-  // A changed address is no longer the address that was confirmed.
+  // Typing invalidates the confirmed address at once: the coordinate belonged to the old text, and
+  // nothing typed is stored until a candidate is picked.
   editing.coord = null;
   editing.resolvedName = null;
-  save();
-  scheduleResolve(editing);
+  editing.suspect = false;
+  el.placeNote.hidden = true;
+  refreshDone();
+  scheduleSearch();
+});
+
+el.placeAddr.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { closeList(); return; }
+  if (e.key === "Enter" && results.length) { e.preventDefault(); pick(0); }
+});
+
+/* Tapping elsewhere closes the list without losing what was picked. */
+document.addEventListener("click", (e) => {
+  if (!el.addrList.hidden && !el.addrList.contains(e.target) && e.target !== el.placeAddr) closeList();
+});
+
+el.placeDone.addEventListener("click", () => {
+  if (!canSave()) return;          // guarded in the button, and again here
+  closePlace();
 });
 
 el.placeDel.addEventListener("click", () => {
@@ -851,7 +919,7 @@ el.editPlace.addEventListener("click", () => {
   if (currentPlace) openPlace(currentPlace);
 });
 
-el.placeDone.addEventListener("click", closePlace);
+
 el.place.addEventListener("click", (e) => { if (e.target === el.place) closePlace(); });
 
 el.closeManage.addEventListener("click", () => show(null));

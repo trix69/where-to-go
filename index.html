@@ -48,7 +48,6 @@
         </button>
       </div>
       <p class="dest" id="destAddr" hidden></p>
-      <p class="dest-match" id="destMatch" hidden></p>
       <p class="summary" id="summary" role="status" aria-live="polite"></p>
       <p class="stamp" id="stamp" hidden></p>
       <a class="go" id="goBtn" href="#" rel="noopener">Open in Maps</a>
@@ -75,11 +74,19 @@
   <section class="sheet" id="place" hidden aria-labelledby="placeTitle">
     <div class="panel">
       <h2 class="sheet-title" id="placeTitle"></h2>
-      <label class="fld">Name<input id="placeName" type="text" autocomplete="off"></label>
-      <label class="fld glyphfld">Icon<input id="placeGlyph" type="text" maxlength="4" autocomplete="off"></label>
-      <label class="fld">Address<input id="placeAddr" type="text" autocomplete="off" inputmode="text"></label>
-      <p class="resolved" id="placeStatus" hidden></p>
-      <div class="alts" id="placeAlts"></div>
+      <label class="fld" for="placeName"><span id="nameLabel">Name</span><input id="placeName" type="text" autocomplete="off"></label>
+
+      <p class="fld-label" id="iconLabel">Icon</p>
+      <div class="icons" id="placeIcons" role="group" aria-labelledby="iconLabel"></div>
+
+      <label class="fld" for="placeAddr"><span id="addrLabel">Address</span></label>
+      <!-- Autocomplete, not a text field: what gets stored is one of the geocoder's own answers. -->
+      <div class="combo">
+        <input id="placeAddr" type="text" autocomplete="off" spellcheck="false"
+               role="combobox" aria-expanded="false" aria-controls="addrList" aria-autocomplete="list">
+        <ul class="addr-list" id="addrList" role="listbox" aria-label="Addresses" hidden></ul>
+      </div>
+      <p class="warn" id="placeNote" hidden></p>
       <p class="warn" id="placeWarn" hidden></p>
       <button class="del" id="placeDel" type="button">Delete</button>
       <button class="go" id="placeDone" type="button">Done</button>
