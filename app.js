@@ -46,9 +46,13 @@ const COPY = {
       const head = `${word} ${t.line}`;
       const tail = `${t.waitMin} min` + (arrive ? `, arriving ${arrive}.` : ".");
       if (!t.board || !t.alight || !t.stops) {
-        // Nothing to name (mock, or a provider without a stop list): the old one-line shape.
-        return `${head} in ${t.waitMin} min, ${t.rideMin ?? t.durationMin} min on board` +
-          (arrive ? `, arriving ${arrive}.` : ".");
+        // Nothing to name (mock, or a provider without a stop list): one line, and the walk gets its own
+        // clause rather than being folded into the on-board minutes (R35.3).
+        const aboard = onBoardMin(t.departISO, t.alightISO) ?? t.rideMin ?? t.durationMin;
+        const walk = t.walkFromStopMin > 0 ? `, ${t.walkFromStopMin} min walk` : "";
+        const door = arrive ? clockAfter(t.departISO, t.arriveISO) : "";
+        return `${head} in ${t.waitMin} min, ${aboard} min on board${walk}` +
+          (door ? `, arriving ${door}.` : ".");
       }
       const at = (stop, platform) => (platform ? `${stop}, platform ${platform}` : stop);
       const way = t.towards ? ` towards ${t.towards}` : "";
@@ -166,8 +170,10 @@ const COPY = {
       if (!t.board || !t.alight || !t.stops) {
         // No stop list (mock, or a provider that does not give one): keep the older, vaguer sentence.
         const ride = t.towards ? `${line}（开往${t.towards}）` : line;
+        const aboard = onBoardMin(t.departISO, t.alightISO) ?? t.rideMin ?? t.durationMin;
         const then = t.walkFromStopMin > 0 ? `，下车后再走${t.walkFromStopMin}分钟` : "";
-        return `坐${ride}，${t.waitMin}分钟后有车，车上大约${t.rideMin ?? t.durationMin}分钟${then}${arrive ? `，${arrive}到` : ""}。`;
+        const door = arrive ? clockAfter(t.departISO, t.arriveISO) : "";
+        return `坐${ride}，${t.waitMin}分钟后有车，车上大约${aboard}分钟${then}${door ? `，${door}到` : ""}。`;
       }
       const at = (stop, platform) => (platform ? `${stop} ${platform}号站台` : stop);
       // Which way the vehicle is going: that is what its front display says, and a platform holds both
@@ -434,6 +440,14 @@ function save() {
 
 const t = () => COPY[state.lang] || COPY[DEFAULT_LANG];
 
+/* On-board minutes for one vehicle: its own departure and its own arrival, so the walk at the end is
+ * never counted twice (R35.3). */
+function onBoardMin(fromISO, toISO) {
+  const a = new Date(fromISO), b = new Date(toISO);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+  return Math.max(0, Math.round((b - a) / 60000));
+}
+
 /* ---------- light / dark / automatic ---------- */
 
 const THEMES = [
@@ -482,7 +496,9 @@ function sydneyDay(iso) {
 }
 function clockAfter(fromISO, iso) {
   const text = clock(iso);
-  return text && fromISO && sydneyDay(fromISO) !== sydneyDay(iso) ? `次日${text}` : text;
+  if (!text || !fromISO) return text;
+  if (state.lang === "en") return text;   // "12:04 am" is already unambiguous; 次日 is not English
+  return sydneyDay(fromISO) !== sydneyDay(iso) ? `次日${text}` : text;
 }
 const nameOf = (place) => (place.name && (place.name[state.lang] || place.name.en)) || place.address;
 
