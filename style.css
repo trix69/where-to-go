@@ -458,50 +458,46 @@ body {
    gets a full tap target, because the person who does need it may be the eldest in the house. */
 .tile-wrap { display: flex; position: relative; }
 
-/* The drag surface. Small, in the corner, and the only element that captures a touch drag — the tile
- * body keeps its tap and the page keeps its scroll. */
-.tile-grip {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--ink-soft);
-  opacity: 0.5;
-  cursor: grab;
-  touch-action: none;
-}
-.tile-grip svg { width: 22px; height: 22px; fill: currentColor; }
-.tile-grip:hover, .tile-grip:focus-visible { opacity: 1; background: var(--line); }
-.tile-grip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-/* The placeholder stays where the tile will land, dimmed; the clone under the finger does the moving.
-   Both are transform-only, so the grid never re-lays out while the drag is in flight. */
-.tile-wrap.dragging .tile { opacity: 0.3; }
-.drag-ghost {
-  position: fixed;
-  left: 0;
-  top: 0;
-  z-index: 40;
-  margin: 0;
-  pointer-events: none;
-  will-change: transform;
-  contain: layout paint;               /* nothing outside the ghost can be affected by its paint */
-  transition: opacity 90ms ease-out;
-}
-/* box-shadow, not filter: a drop-shadow filter re-blurs the whole tile on every frame of the drag. */
-.drag-ghost .tile { transform: scale(1.04); box-shadow: 0 12px 22px rgba(0, 0, 0, 0.22); }
-.drag-ghost .tile-grip { opacity: 0; }
-body.reordering { user-select: none; -webkit-user-select: none; }
-
 /* At 特大 a chain card is taller than the body it sits in, and the line that overflowed was the arrival
    (R43.4). The destination is the place the reader named themselves and line 1 already says where the
    trip goes, so it is the line that gives way. */
 html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
+
+/* The order list: one row per place, a name and two arrows. The arrows are the largest thing in the row
+   because they are the only thing to tap. */
+.order-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.order-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+.order-face { font-size: 1.6rem; line-height: 1; }
+.order-name { flex: 1 1 auto; font-size: var(--type); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arrow {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.arrow:disabled { opacity: 0.35; cursor: default; }
+.arrow:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* Same split as every other dialog: the list scrolls, 完成 does not. */
+#order { align-items: center; padding: 24px; }
+#order .panel { border-radius: 20px; display: flex; flex-direction: column; }
+#order .sheet-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+#order .sheet-title, #order .go { flex: 0 0 auto; }
 .tile-wrap .tile { flex: 1 1 auto; }
 .tile-add { align-items: center; justify-content: center; color: var(--ink-soft); border-style: dashed; }
 

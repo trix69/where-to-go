@@ -142,7 +142,10 @@ const COPY = {
       "Tap Add to confirm.",
     ],
     homeNote: "Once it is on the home screen, one tap opens it.",
-    moveTile: "Move",
+    orderTitle: "Order of places",
+    orderRow: "Order",
+    moveUp: "Move up",
+    moveDown: "Move down",
     movedTo: (name, n) => `${name} is now number ${n}.`,
     sizeLabel: "Text size",
     sizes: { sm: "Small", md: "Medium", lg: "Large", xl: "Extra large" },
@@ -309,7 +312,10 @@ const COPY = {
       "再点一次「添加」。",
     ],
     homeNote: "放到主屏幕后，从桌面一下点开。",
-    moveTile: "移动位置",
+    orderTitle: "排列顺序",
+    orderRow: "排列顺序",
+    moveUp: "上移",
+    moveDown: "下移",
     movedTo: (name, n) => `「${name}」已移到第 ${n} 位。`,
     sizeLabel: "字体大小",
     sizes: { sm: "小", md: "中", lg: "大", xl: "特大" },
@@ -540,6 +546,11 @@ const el = {
   gear: $("settingsBtn"),
   tiles: $("tiles"),
   orderStatus: $("orderStatus"),
+  order: $("order"),
+  orderBtn: $("orderBtn"),
+  orderTitle: $("orderTitle"),
+  orderList: $("orderList"),
+  orderDone: $("orderDone"),
   sheet: $("sheet"),
   sheetTitle: $("sheetTitle"),
   destAddr: $("destAddr"),
@@ -635,175 +646,26 @@ function tile(place) {
     openAnswer(place);
   });
 
-  /* A grip beside the tile, not inside it: a button inside a button is invalid HTML, and the grip is the
-   * only surface that drags, so a tap on the tile still opens the place. */
-  const grip = document.createElement("button");
-  grip.type = "button";
-  grip.className = "tile-grip";
-  grip.setAttribute("aria-label", `${t().moveTile}: ${nameOf(place)}`);
-  grip.setAttribute("aria-describedby", "gripHint");
-  grip.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
-
-  li.append(b, grip);
-  attachReorder(li, grip, place);
+  li.append(b);
   return li;
 }
 
-/* ---------- reordering the tiles ----------
- * Trix asked for this twice; the first two attempts are in the mailbox (R46-R49) and both failed on feel.
- * What is different here, all of it learned from the mailbox:
- *   - the clone's size and the slot rects are measured once at pickup, never per move (a size read in the
- *     pointer handler forces layout — that is what made attempt two worse than attempt one);
- *   - the transform is written in the handler, so the visual never waits for a frame;
- *   - a 10 px dead zone: a tremble or a tap never reorders, saves or announces (R46.1);
- *   - a press on the grip that never became a drag opens the place (R46.2), which also gives the button
- *     something to do when it is activated from a keyboard (R46.3);
- *   - the clone is aria-hidden AND unfocusable, because a focusable element inside an aria-hidden subtree
- *     is the one violation screen readers handle least predictably;
- *   - a chosen order survives preset migrations via `orderChosen` (R46.4).
+/* ---------- the order of the places ----------
+ * Trix: "try the up and down row in setting". No drag anywhere in the app: a list in Settings, one row
+ * per place, with ↑ and ↓. Two taps to move one place, no gesture to learn, and nothing on the tile
+ * screen that is not the tile.
  */
 
-function commitOrder(moved) {
-  const ids = [...el.tiles.querySelectorAll(".tile-wrap[data-id]")].map((w) => w.dataset.id);
-  const byId = new Map(state.places.map((p) => [p.id, p]));
-  const next = ids.map((id) => byId.get(id)).filter(Boolean);
-  for (const p of state.places) if (!ids.includes(p.id)) next.push(p);   // never lose a place to a drag
-  const changed = next.some((p, i) => p !== state.places[i]);
-  if (!changed) { render(); return; }          // nothing moved: no save, no announcement (R46.1)
-  state.places = next;
+function movePlace(place, delta) {
+  const from = state.places.indexOf(place);
+  const to = from + delta;
+  if (from < 0 || to < 0 || to >= state.places.length) return false;
+  state.places.splice(to, 0, state.places.splice(from, 1)[0]);
   state.orderChosen = true;
   save();
   render();
-  el.orderStatus.textContent = t().movedTo(nameOf(moved), next.indexOf(moved) + 1);
-}
-
-function attachReorder(li, grip, place) {
-  let ghost = null;
-  let grabX = 0;
-  let grabY = 0;
-  let startX = 0;
-  let startY = 0;
-  let px = 0;
-  let py = 0;
-  let frame = 0;
-  let slots = [];
-  let active = false;
-  let moved = false;
-  let swallowClick = false;
-
-  const measure = () => {
-    slots = [...el.tiles.querySelectorAll(".tile-wrap:not([data-add])")]
-      .filter((w) => w !== li)
-      .map((w) => ({ el: w, r: w.getBoundingClientRect() }));
-  };
-
-  const decide = () => {
-    frame = 0;
-    if (!ghost) return;
-    let best = null;
-    let bestD = Infinity;
-    for (const s of slots) {
-      const d = (px - (s.r.left + s.r.width / 2)) ** 2 + (py - (s.r.top + s.r.height / 2)) ** 2;
-      if (d < bestD) { bestD = d; best = s; }
-    }
-    if (!best) return;
-    const before = py < best.r.top + best.r.height / 2 ||
-      (py <= best.r.bottom && px < best.r.left + best.r.width / 2);
-    const next = before ? best.el : best.el.nextSibling;
-    if (next === li) return;
-    el.tiles.insertBefore(li, next);
-    measure();
-  };
-
-  const finish = (commit) => {
-    if (!active) return;
-    active = false;
-    if (frame) { cancelAnimationFrame(frame); frame = 0; }
-    if (commit && moved && ghost) decide();     // settle a flick that never got its frame
-    li.classList.remove("dragging");
-    document.body.classList.remove("reordering");
-    if (ghost) {
-      const dying = ghost;
-      ghost = null;
-      dying.remove();
-    }
-    if (!commit) return;
-    if (!moved) {                                // a touch on the grip is a tap on the place (R46.2)
-      swallowClick = true;
-      li.querySelector(".tile").click();
-      return;
-    }
-    swallowClick = true;
-    commitOrder(place);
-  };
-
-  grip.addEventListener("pointerdown", (e) => {
-    if (e.button) return;
-    e.preventDefault();
-    try { grip.setPointerCapture(e.pointerId); } catch { /* synthetic event: no pointer to capture */ }
-
-    const r = li.getBoundingClientRect();
-    px = startX = e.clientX;
-    py = startY = e.clientY;
-    grabX = px - r.left;
-    grabY = py - r.top;
-    moved = false;
-    swallowClick = false;
-
-    ghost = li.cloneNode(true);
-    ghost.classList.add("drag-ghost");
-    ghost.setAttribute("aria-hidden", "true");
-    ghost.querySelectorAll("button, [tabindex]").forEach((n) => n.setAttribute("tabindex", "-1"));
-    ghost.style.width = `${r.width}px`;
-    ghost.style.height = `${r.height}px`;
-    ghost.style.transform = `translate3d(${r.left}px, ${r.top}px, 0)`;
-    ghost.style.opacity = "0";                   // nothing appears until the dead zone is passed
-    document.body.append(ghost);
-
-    active = true;
-    measure();
-  });
-
-  grip.addEventListener("pointermove", (e) => {
-    if (!active) return;
-    if (!moved) {
-      if (Math.hypot(e.clientX - startX, e.clientY - startY) < 10) return;   // a tremble is not a drag
-      moved = true;
-      ghost.style.opacity = "";
-      li.classList.add("dragging");
-      document.body.classList.add("reordering");
-    }
-    e.preventDefault();
-    px = e.clientX;
-    py = e.clientY;
-    ghost.style.transform = `translate3d(${px - grabX}px, ${py - grabY}px, 0)`;
-    if (!frame) frame = requestAnimationFrame(decide);
-  });
-
-  grip.addEventListener("pointerup", (e) => { px = e.clientX; py = e.clientY; finish(true); });
-  grip.addEventListener("pointercancel", () => finish(false));
-
-  // Activating the grip from a keyboard lands here with no drag at all: open the place, like a tap.
-  grip.addEventListener("click", () => {
-    if (swallowClick) { swallowClick = false; return; }
-    if (!active && !moved) li.querySelector(".tile").click();
-  });
-
-  grip.addEventListener("keydown", (e) => {
-    const step = e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1
-      : e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : 0;
-    if (!step) return;
-    e.preventDefault();
-    const from = state.places.indexOf(place);
-    const to = from + step;
-    if (from < 0 || to < 0 || to >= state.places.length) return;
-    state.places.splice(to, 0, state.places.splice(from, 1)[0]);
-    state.orderChosen = true;
-    save();
-    render();
-    el.tiles.querySelector(`.tile-wrap[data-id="${place.id}"] .tile-grip`)?.focus();
-    el.orderStatus.textContent = t().movedTo(nameOf(place), to + 1);
-  });
+  el.orderStatus.textContent = t().movedTo(nameOf(place), to + 1);
+  return true;
 }
 
 function addTile() {
@@ -820,24 +682,72 @@ function addTile() {
   return li;
 }
 
+function openOrder() {
+  const c = t();
+  el.orderTitle.textContent = c.orderTitle;
+  el.orderDone.textContent = c.done;
+  el.orderList.replaceChildren(...state.places.map((place, i) => {
+    const li = document.createElement("li");
+    li.className = "order-row";
+    li.dataset.id = place.id;
+
+    const face = document.createElement("span");
+    face.className = "order-face";
+    face.setAttribute("aria-hidden", "true");
+    face.textContent = place.glyph || "📍";
+
+    const name = document.createElement("span");
+    name.className = "order-name";
+    name.textContent = nameOf(place);
+
+    const up = document.createElement("button");
+    up.type = "button";
+    up.className = "arrow up";
+    up.textContent = "↑";
+    up.setAttribute("aria-label", `${c.moveUp}: ${nameOf(place)}`);
+    up.disabled = i === 0;
+    up.addEventListener("click", () => { if (movePlace(place, -1)) { openOrder(); refocus(place.id, "up"); } });
+
+    const down = document.createElement("button");
+    down.type = "button";
+    down.className = "arrow down";
+    down.textContent = "↓";
+    down.setAttribute("aria-label", `${c.moveDown}: ${nameOf(place)}`);
+    down.disabled = i === state.places.length - 1;
+    down.addEventListener("click", () => { if (movePlace(place, 1)) { openOrder(); refocus(place.id, "down"); } });
+
+    li.append(face, name, up, down);
+    return li;
+  }));
+  show("order");
+}
+
+/* Focus follows the place being moved, so a second tap on the same arrow keeps working after the list is
+ * rebuilt — without this, every move would drop focus back to the dialog title. */
+function refocus(id, dir) {
+  el.orderList.querySelector(`li[data-id="${id}"] .arrow.${dir}`)?.focus();
+}
+
 /* Which control opened the dialog that is open now. A screen-reader user taps the 添加到主屏幕 row,
  * the row goes hidden underneath them, and nothing is announced — so the arriving dialog takes focus
  * and the closing dialog hands it back (R38.4). */
 let opener = null;
 
 function show(which) {
-  const wasOpen = !el.sheet.hidden || !el.manage.hidden || !el.place.hidden || !el.install.hidden || !el.icons.hidden;
+  const wasOpen = !el.sheet.hidden || !el.manage.hidden || !el.place.hidden || !el.install.hidden
+    || !el.icons.hidden || !el.order.hidden;
   if (which && !wasOpen) opener = document.activeElement;
 
   el.sheet.hidden = which !== "answer";
   el.manage.hidden = which !== "manage";
   el.place.hidden = which !== "place";
   el.install.hidden = which !== "install";
+  el.order.hidden = which !== "order";
   if (which !== "icons") el.icons.hidden = true;
   document.body.style.overflow = which ? "hidden" : "";
 
   if (which) {
-    const root = { answer: el.sheet, manage: el.manage, place: el.place, install: el.install, icons: el.icons }[which];
+    const root = { answer: el.sheet, manage: el.manage, place: el.place, install: el.install, icons: el.icons, order: el.order }[which];
     const target = root && root.querySelector(".sheet-title[tabindex], [data-focus], .icons[tabindex]");
     target?.focus?.({ preventScroll: true });
   } else if (opener && document.contains(opener)) {
@@ -1129,6 +1039,7 @@ function openManage() {
   el.storageWarn.textContent = c.storageWarn;
   el.verMsg.textContent = c.checkUpdates;
   el.installBtn.textContent = c.addHome;
+  el.orderBtn.textContent = c.orderRow;
 
   el.langLabel.textContent = c.language;
   el.themeLabel.textContent = c.appearance;
@@ -1494,6 +1405,8 @@ el.retryLoc.addEventListener("click", () => {
   if (currentPlace) openAnswer(currentPlace);
 });
 el.gear.addEventListener("click", () => { stopRefresh(); openManage(); });
+el.orderBtn.addEventListener("click", () => openOrder());
+el.orderDone.addEventListener("click", () => openManage());
 el.installBtn.addEventListener("click", () => openInstall());
 el.installDone.addEventListener("click", () => openManage());
 

@@ -40,8 +40,6 @@
   </header>
 
   <ul class="tiles" id="tiles"></ul>
-  <p class="sr-only" id="orderStatus" role="status"></p>
-  <p class="sr-only" id="gripHint">按住拖动，或用方向键移动</p>
 
   <!-- Answer for one place. Two actions only: go, or go back. -->
   <section class="sheet" id="sheet" role="dialog" aria-modal="true" hidden aria-labelledby="sheetTitle">
@@ -76,10 +74,24 @@
       <p class="seg-label" id="sizeLabel">Text size</p>
       <div class="seg" id="sizeRow" role="group" aria-labelledby="sizeLabel"></div>
       <p class="sr-only" id="sizeStatus" role="status"></p>
+      <button type="button" class="row" id="orderBtn">Order of places</button>
       <button type="button" class="row" id="installBtn">Add to home screen</button>
       <button type="button" class="ver" id="verBtn"><span><span id="verLabel">Version</span> <span id="appVersion">1.1</span></span> · <span id="verMsg">Check for updates</span></button>
       </div>
       <button class="go" id="closeManage" type="button">Done</button>
+    </div>
+  </section>
+
+  <!-- The order of the places: one row each, ↑ and ↓. No drag anywhere — a gesture is the thing this
+       audience is least likely to discover, and two taps are unambiguous. -->
+  <section class="sheet" id="order" role="dialog" aria-modal="true" hidden aria-labelledby="orderTitle">
+    <div class="panel">
+      <h2 class="sheet-title" id="orderTitle" tabindex="-1">Order of places</h2>
+      <div class="sheet-body">
+        <ol class="order-list" id="orderList"></ol>
+        <p class="sr-only" id="orderStatus" role="status"></p>
+      </div>
+      <button class="go" id="orderDone" type="button">Done</button>
     </div>
   </section>
 
