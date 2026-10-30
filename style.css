@@ -355,7 +355,7 @@ body {
   background: transparent;
   text-align: center;
   font: inherit;
-  font-size: 0.95rem;
+  font-size: var(--type);
   color: var(--ink-soft);
   cursor: pointer;
 }
