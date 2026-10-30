@@ -72,8 +72,16 @@ const COPY = {
         : "";
       if (Array.isArray(t.rides) && t.rides.length > 1) {
         const chain = `Change ${t.rides.length - 1} time${t.rides.length > 2 ? "s" : ""}: ` +
-          t.rides.map((r, i) => `${i === 0 ? "first" : i === t.rides.length - 1 ? "then" : "next"} ` +
-            `${(COPY.en.modes[r.mode] || "bus").toLowerCase()} ${r.line} to ${r.alight}`).join(", ") + ".";
+          `board at ${t.board}, ` +
+          t.rides.map((r, i) => {
+            const extra = i === 0 ? [] : [
+              r.towards ? `towards ${r.towards}` : "",
+              r.departISO ? `departs ${clockAfter(t.departISO, r.departISO)}` : "",
+            ];
+            const why = extra.filter(Boolean).join(", ");
+            return `${i === 0 ? "first" : i === t.rides.length - 1 ? "then" : "next"} ` +
+              `${(COPY.en.modes[r.mode] || "bus").toLowerCase()} ${r.line}${why ? ` (${why})` : ""} to ${r.alight}`;
+          }).join(", ") + ".";
         const chainDoor = arrive ? clockAfter(t.departISO, t.arriveISO) : "";
         const arrival = chainDoor
           ? (t.walkFromStopMin > 0 ? `${t.walkFromStopMin} min walk, ${chainDoor} at the door.` : `${chainDoor} at the door.`)
@@ -134,6 +142,8 @@ const COPY = {
       "Tap Add to confirm.",
     ],
     homeNote: "Once it is on the home screen, one tap opens it.",
+    moveTile: "Move",
+    movedTo: (name, n) => `${name} is now number ${n}.`,
     sizeLabel: "Text size",
     sizes: { sm: "Small", md: "Medium", lg: "Large", xl: "Extra large" },
   },
@@ -216,11 +226,19 @@ const COPY = {
           const word = COPY["zh-Hans"].modes[mode] || "公交";
           return mode === "bus" || mode === "coach" ? `${word}${line}路` : `${word}${line}`;
         };
-        const chain = `换乘${t.rides.length - 1}次：` + t.rides.map((r, i) => {
+        /* Where to wait, then each vehicle. After the first, the direction and the departure clock
+         * belong in the bracket: a platform holds both directions, and a transfer with no clock is an
+         * unexplained gap between the first departure and the final arrival (R43.1-R43.3). */
+        const chain = `换乘${t.rides.length - 1}次：从${t.board}上车，` + t.rides.map((r, i) => {
           const verb = i === 0 ? "先坐"
             : i === t.rides.length - 1 ? (t.rides.length > 2 ? "最后坐" : "再坐")
               : "然后坐";
-          return `${verb}${label(r.mode, r.line)}到${r.alight}`;
+          const extra = i === 0 ? [] : [
+            r.towards ? `开往${r.towards}` : "",
+            r.departISO ? `${clockAfter(t.departISO, r.departISO)}开` : "",
+          ];
+          const why = extra.filter(Boolean).join("，");
+          return `${verb}${label(r.mode, r.line)}${why ? `（${why}）` : ""}到${r.alight}`;
         }).join("，") + "。";
         // No stop clock is printed in a chain card, so the door clock is dated against the service
         // clock it follows — otherwise a 23:43 departure and a 00:47 arrival sit unmarked.
@@ -291,6 +309,8 @@ const COPY = {
       "再点一次「添加」。",
     ],
     homeNote: "放到主屏幕后，从桌面一下点开。",
+    moveTile: "移动位置",
+    movedTo: (name, n) => `「${name}」已移到第 ${n} 位。`,
     sizeLabel: "字体大小",
     sizes: { sm: "小", md: "中", lg: "大", xl: "特大" },
   },
@@ -374,7 +394,10 @@ function ensureDefaults(stored) {
     if (SEED_ADDRESSES[p.id] && (p.address || "") === SEED_ADDRESSES[p.id]) p.address = "";
   }
   const rank = new Map(SEED.map((p, i) => [p.id, i]));
-  stored.places.sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : SEED.length) - (rank.has(b.id) ? rank.get(b.id) : SEED.length));
+  // A chosen order wins over the seed rank (R46.4); new presets are simply appended.
+  if (!stored.orderChosen) {
+    stored.places.sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : SEED.length) - (rank.has(b.id) ? rank.get(b.id) : SEED.length));
+  }
   stored.seedVersion = SEED_VERSION;
   return stored;
 }
@@ -405,6 +428,8 @@ function load() {
         // `suspect` was written by builds before R26 and nothing reads it now; left in place it would
         // keep an old place opening its editor for ever, with no line saying why.
         for (const place of s.places) delete place.suspect;
+        /* Sorting the presets is only right while the order is not the user's decision. Once somebody
+         * drags a tile, `orderChosen` says the order is theirs and no migration may re-sort it (R46.4). */
         /* The theme default changed to light (Trix). A stored "auto" is almost always the old default
          * rather than a decision, so it is migrated once; from now on an explicit pick sets
          * `themeChosen`, which this never touches again. */
@@ -514,6 +539,7 @@ const el = {
   gateSkip: $("gateSkip"),
   gear: $("settingsBtn"),
   tiles: $("tiles"),
+  orderStatus: $("orderStatus"),
   sheet: $("sheet"),
   sheetTitle: $("sheetTitle"),
   destAddr: $("destAddr"),
@@ -579,6 +605,7 @@ function render() {
 function tile(place) {
   const li = document.createElement("li");
   li.className = "tile-wrap";
+  li.dataset.id = place.id;
 
   const b = document.createElement("button");
   b.type = "button";
@@ -607,8 +634,176 @@ function tile(place) {
     if (!place.coord || drifted) return openPlace(place);
     openAnswer(place);
   });
-  li.append(b);
+
+  /* A grip beside the tile, not inside it: a button inside a button is invalid HTML, and the grip is the
+   * only surface that drags, so a tap on the tile still opens the place. */
+  const grip = document.createElement("button");
+  grip.type = "button";
+  grip.className = "tile-grip";
+  grip.setAttribute("aria-label", `${t().moveTile}: ${nameOf(place)}`);
+  grip.setAttribute("aria-describedby", "gripHint");
+  grip.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
+
+  li.append(b, grip);
+  attachReorder(li, grip, place);
   return li;
+}
+
+/* ---------- reordering the tiles ----------
+ * Trix asked for this twice; the first two attempts are in the mailbox (R46-R49) and both failed on feel.
+ * What is different here, all of it learned from the mailbox:
+ *   - the clone's size and the slot rects are measured once at pickup, never per move (a size read in the
+ *     pointer handler forces layout — that is what made attempt two worse than attempt one);
+ *   - the transform is written in the handler, so the visual never waits for a frame;
+ *   - a 10 px dead zone: a tremble or a tap never reorders, saves or announces (R46.1);
+ *   - a press on the grip that never became a drag opens the place (R46.2), which also gives the button
+ *     something to do when it is activated from a keyboard (R46.3);
+ *   - the clone is aria-hidden AND unfocusable, because a focusable element inside an aria-hidden subtree
+ *     is the one violation screen readers handle least predictably;
+ *   - a chosen order survives preset migrations via `orderChosen` (R46.4).
+ */
+
+function commitOrder(moved) {
+  const ids = [...el.tiles.querySelectorAll(".tile-wrap[data-id]")].map((w) => w.dataset.id);
+  const byId = new Map(state.places.map((p) => [p.id, p]));
+  const next = ids.map((id) => byId.get(id)).filter(Boolean);
+  for (const p of state.places) if (!ids.includes(p.id)) next.push(p);   // never lose a place to a drag
+  const changed = next.some((p, i) => p !== state.places[i]);
+  if (!changed) { render(); return; }          // nothing moved: no save, no announcement (R46.1)
+  state.places = next;
+  state.orderChosen = true;
+  save();
+  render();
+  el.orderStatus.textContent = t().movedTo(nameOf(moved), next.indexOf(moved) + 1);
+}
+
+function attachReorder(li, grip, place) {
+  let ghost = null;
+  let grabX = 0;
+  let grabY = 0;
+  let startX = 0;
+  let startY = 0;
+  let px = 0;
+  let py = 0;
+  let frame = 0;
+  let slots = [];
+  let active = false;
+  let moved = false;
+  let swallowClick = false;
+
+  const measure = () => {
+    slots = [...el.tiles.querySelectorAll(".tile-wrap:not([data-add])")]
+      .filter((w) => w !== li)
+      .map((w) => ({ el: w, r: w.getBoundingClientRect() }));
+  };
+
+  const decide = () => {
+    frame = 0;
+    if (!ghost) return;
+    let best = null;
+    let bestD = Infinity;
+    for (const s of slots) {
+      const d = (px - (s.r.left + s.r.width / 2)) ** 2 + (py - (s.r.top + s.r.height / 2)) ** 2;
+      if (d < bestD) { bestD = d; best = s; }
+    }
+    if (!best) return;
+    const before = py < best.r.top + best.r.height / 2 ||
+      (py <= best.r.bottom && px < best.r.left + best.r.width / 2);
+    const next = before ? best.el : best.el.nextSibling;
+    if (next === li) return;
+    el.tiles.insertBefore(li, next);
+    measure();
+  };
+
+  const finish = (commit) => {
+    if (!active) return;
+    active = false;
+    if (frame) { cancelAnimationFrame(frame); frame = 0; }
+    if (commit && moved && ghost) decide();     // settle a flick that never got its frame
+    li.classList.remove("dragging");
+    document.body.classList.remove("reordering");
+    if (ghost) {
+      const dying = ghost;
+      ghost = null;
+      dying.remove();
+    }
+    if (!commit) return;
+    if (!moved) {                                // a touch on the grip is a tap on the place (R46.2)
+      swallowClick = true;
+      li.querySelector(".tile").click();
+      return;
+    }
+    swallowClick = true;
+    commitOrder(place);
+  };
+
+  grip.addEventListener("pointerdown", (e) => {
+    if (e.button) return;
+    e.preventDefault();
+    try { grip.setPointerCapture(e.pointerId); } catch { /* synthetic event: no pointer to capture */ }
+
+    const r = li.getBoundingClientRect();
+    px = startX = e.clientX;
+    py = startY = e.clientY;
+    grabX = px - r.left;
+    grabY = py - r.top;
+    moved = false;
+    swallowClick = false;
+
+    ghost = li.cloneNode(true);
+    ghost.classList.add("drag-ghost");
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.querySelectorAll("button, [tabindex]").forEach((n) => n.setAttribute("tabindex", "-1"));
+    ghost.style.width = `${r.width}px`;
+    ghost.style.height = `${r.height}px`;
+    ghost.style.transform = `translate3d(${r.left}px, ${r.top}px, 0)`;
+    ghost.style.opacity = "0";                   // nothing appears until the dead zone is passed
+    document.body.append(ghost);
+
+    active = true;
+    measure();
+  });
+
+  grip.addEventListener("pointermove", (e) => {
+    if (!active) return;
+    if (!moved) {
+      if (Math.hypot(e.clientX - startX, e.clientY - startY) < 10) return;   // a tremble is not a drag
+      moved = true;
+      ghost.style.opacity = "";
+      li.classList.add("dragging");
+      document.body.classList.add("reordering");
+    }
+    e.preventDefault();
+    px = e.clientX;
+    py = e.clientY;
+    ghost.style.transform = `translate3d(${px - grabX}px, ${py - grabY}px, 0)`;
+    if (!frame) frame = requestAnimationFrame(decide);
+  });
+
+  grip.addEventListener("pointerup", (e) => { px = e.clientX; py = e.clientY; finish(true); });
+  grip.addEventListener("pointercancel", () => finish(false));
+
+  // Activating the grip from a keyboard lands here with no drag at all: open the place, like a tap.
+  grip.addEventListener("click", () => {
+    if (swallowClick) { swallowClick = false; return; }
+    if (!active && !moved) li.querySelector(".tile").click();
+  });
+
+  grip.addEventListener("keydown", (e) => {
+    const step = e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1
+      : e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const from = state.places.indexOf(place);
+    const to = from + step;
+    if (from < 0 || to < 0 || to >= state.places.length) return;
+    state.places.splice(to, 0, state.places.splice(from, 1)[0]);
+    state.orderChosen = true;
+    save();
+    render();
+    el.tiles.querySelector(`.tile-wrap[data-id="${place.id}"] .tile-grip`)?.focus();
+    el.orderStatus.textContent = t().movedTo(nameOf(place), to + 1);
+  });
 }
 
 function addTile() {
