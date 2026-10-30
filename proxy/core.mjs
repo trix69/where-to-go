@@ -80,12 +80,49 @@ export async function resolvePlace({ key, text, timeoutMs = 6000 }) {
  */
 export async function resolvePlaces({ key, text, timeoutMs = 6000, limit = 3 }) {
   if (!text) return [];
+
+  // "…, Sydney NSW 2021" is what people type and what stop_finder gets wrong most: the city token
+  // pulls the match towards the CBD. Retrying once without it turns Centennial Park into the right
+  // park (measured), so both variants are asked and their hits merged.
+  const seen = new Set();
+  const hits = [];
+  for (const variant of variantsFor(text)) {
+    for (const hit of await queryStopFinder({ key, text: variant, timeoutMs, limit })) {
+      const key2 = `${hit.name}|${hit.coord.lat},${hit.coord.lng}`;
+      if (seen.has(key2)) continue;
+      seen.add(key2);
+      hits.push(hit);
+    }
+  }
+  // A hit in the suburb that was typed beats one in another suburb — that is the signal a word check
+  // cannot give ("Centennial Park" shares both words with a park 15 km away).
+  const typed = new Set(words(text));
+  const local = (h) => (h.locality ? words(h.locality).some((w) => typed.has(w)) : false);
+  return hits
+    .map((h, i) => ({ h, i, rank: local(h) ? 0 : 1 }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .slice(0, limit)
+    .map(({ h }) => h);
+}
+
+/** The queries worth asking for one typed address: as typed, then with the city/state tail removed. */
+export function variantsFor(text) {
+  const t = String(text || "").trim();
+  const stripped = t
+    .replace(/,\s*(greater\s+)?(sydney|new south wales|nsw|australia)\b.*$/i, "")
+    .replace(/\s+(greater\s+)?(sydney|new south wales|nsw|australia)\b.*$/i, "")
+    .trim();
+  return stripped && stripped.toLowerCase() !== t.toLowerCase() ? [t, stripped] : [t];
+}
+
+/** One stop_finder call. [lat, lng] in the response — the reverse of what the trip endpoint wants. */
+async function queryStopFinder({ key, text, timeoutMs, limit }) {
   const p = new URLSearchParams({
     outputFormat: "rapidJSON",
     coordOutputFormat: "EPSG:4326",
     type_sf: "any",
     name_sf: text,
-    anyMaxSizeHitList: "3",
+    anyMaxSizeHitList: String(Math.max(limit, 3)),
   });
   let res;
   try {
@@ -98,11 +135,26 @@ export async function resolvePlaces({ key, text, timeoutMs = 6000, limit = 3 }) 
   }
   if (!res.ok) return [];
   const json = await res.json().catch(() => null);
-  // [lat, lng] in the response — the reverse of what the trip endpoint wants.
   return (json?.locations || [])
     .filter((l) => Array.isArray(l?.coord) && l.coord.length >= 2)
-    .slice(0, limit)
-    .map((l) => ({ coord: { lat: Number(l.coord[0]), lng: Number(l.coord[1]) }, name: l.name || text }));
+    .map((l) => ({
+      coord: { lat: Number(l.coord[0]), lng: Number(l.coord[1]) },
+      name: l.name || text,
+      locality: l.parent?.name || l.properties?.mainLocality || "",
+    }));
+}
+
+const WORD_STOP = new Set([
+  "sydney", "nsw", "new", "south", "wales", "australia", "the", "and", "of",
+  "street", "st", "road", "rd", "avenue", "ave", "drive", "dr", "lane", "ln", "place", "pl",
+  "park", "parade", "pde", "highway", "hwy", "level", "shop", "suite", "unit",
+]);
+
+function words(s) {
+  return String(s || "").toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
+    .split(" ")
+    .filter((w) => w.length > 2 && !WORD_STOP.has(w));
 }
 
 const MODE_BY_NAME = [
@@ -130,14 +182,40 @@ function modeOf(leg) {
 
 const isWalk = (leg) => !leg?.transportation || modeOf(leg) === "walk" || leg.transportation?.product?.class === 100;
 
+/** Minutes east of UTC that Sydney is at a given instant (600 in AEST, 660 in AEDT). */
+function sydneyOffsetMin(date) {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Sydney",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).formatToParts(date);
+  const get = (t) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const asUTC = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour") % 24, get("minute"), get("second"));
+  return Math.round((asUTC - date.getTime()) / 60000);
+}
+
+/** A timestamp with no zone is Sydney wall-clock — read it through the real offset, not +11:00.
+ *  DST is not optional arithmetic here: +11:00 in July is a 60-minute error, the same class of bug
+ *  the Z fix removed. */
+function naiveSydney(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
+  if (!m) return null;
+  const wall = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  // Two passes: the offset at the guessed instant is the one that applies to the wall clock.
+  let t = wall - sydneyOffsetMin(new Date(wall)) * 60000;
+  t = wall - sydneyOffsetMin(new Date(t)) * 60000;
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function when(time) {
   // TfNSW rapidJSON returns UTC with a Z (verified against a live call: 21:09Z was 5 minutes away
   // at 08:04 Sydney). Read it as the ISO instant it is — the earlier code stripped the Z and pinned
   // +11:00, which turned a 5-minute wait into 13 hours.
-  const s = String(time);
+  const s = String(time ?? "").trim();
+  if (!s) return null;
   const zoned = /[zZ]$|[+-]\d\d:?\d\d$/.test(s);
-  const d = new Date(zoned ? s : `${s}+11:00`); // a naive stamp is Sydney wall-clock
-  return Number.isNaN(d.getTime()) ? null : d;
+  return zoned ? (Number.isNaN(new Date(s).getTime()) ? null : new Date(s)) : naiveSydney(s);
 }
 
 /** First journey only: the app shows one answer. `journeys` is ordered earliest-departing first. */
@@ -165,8 +243,12 @@ export function summarise(json, now = new Date()) {
     // disassembledName is the route short name ("M1", "343"); number can be the full line title
     // ("M1 Metro North West & Bankstown Line"), which does not fit a one-sentence answer.
     line: shortName.length <= 8 ? shortName : ride.number || shortName,
+    // "CCN" is a line code, not a line number: for rail the useful words are where it goes.
+    // "Richmond via Parramatta" is a timetable heading, not something to read out: keep the terminus.
+    towards: String(ride.destination?.name || firstRide.destination?.name || "").split(/\svia\s/i)[0],
     waitMin: mins(now, depart),
-    durationMin: mins(start, arrive),
+    durationMin: mins(start, arrive),   // door to door, from now
+    rideMin: mins(depart, arrive),      // on board; waitMin + rideMin is what lands on arriveISO
     arriveISO: arrive.toISOString(),
     walkToStopMin: mins(start, depart) > 0 ? mins(start, depart) : 0,
     departISO: depart.toISOString(),
@@ -225,5 +307,9 @@ export async function fetchTrip({ key, to, from, fromCoord, toCoord, now = new D
     const why = (json?.systemMessages || []).map((m) => m.text).filter(Boolean).join("; ");
     return { ...summary, upstream: why || undefined, status: 200 };
   }
-  return { ...summary, resolvedName: resolvedTo?.name || undefined };
+  return {
+    ...summary,
+    resolvedName: resolvedTo?.name || undefined,
+    resolvedOriginName: resolvedFrom?.name || undefined,
+  };
 }

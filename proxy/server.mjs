@@ -53,12 +53,17 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/resolve") {
     const q = (url.searchParams.get("q") || "").trim();
     if (!q) return send(res, 400, { ok: false, error: "no-query" });
-    if (SAMPLE) return send(res, 200, { ok: true, name: `${q} (sample)`, coord: { lng: 151.20629, lat: -33.88408 }, matches: [] });
+    // Sample mode must not look like a real match: a stored coordinate is what travel time trusts,
+    // and one invented Sydney point per address is sample data escaping its stamp (R6.4).
+    if (SAMPLE) return send(res, 200, { ok: false, error: "sample", provider: "sample" });
     if (!KEY) return send(res, 503, { ok: false, error: "no-key" });
     const all = await resolvePlaces({ key: KEY, text: q });
     if (!all.length) return send(res, 200, { ok: false, error: "not-found" });
     const [best, ...rest] = all;
-    return send(res, 200, { ok: true, name: best.name, coord: best.coord, matches: rest });
+    return send(res, 200, {
+      ok: true, provider: "tfnsw", name: best.name, coord: best.coord, locality: best.locality,
+      matches: rest.map((m) => ({ name: m.name, coord: m.coord, locality: m.locality })),
+    });
   }
 
   if (url.pathname !== "/trip") return send(res, 404, { ok: false, error: "not-found" });
@@ -84,7 +89,7 @@ const server = http.createServer(async (req, res) => {
   if (SAMPLE) {
     return send(res, 200, {
       ok: true, provider: "sample", mode: "bus", line: "343",
-      waitMin: 4, durationMin: 22, walkToStopMin: 3, realtime: false, changes: 0,
+      waitMin: 4, durationMin: 22, rideMin: 18, walkToStopMin: 3, realtime: false, changes: 0,
       departISO: new Date(Date.now() + 4 * 60000).toISOString(),
     });
   }

@@ -39,8 +39,11 @@ const COPY = {
     regionMsg: "This app only works in New South Wales, Australia. It isn't available in your region yet.",
     storageWarn: "This browser isn't saving changes (private browsing?). Places will be lost when you close the tab.",
     demo: "SAMPLE DATA — no live transit yet",
+    // waitMin + rideMin is the arithmetic that lands on the arrival time printed beside it; the
+    // door-to-door figure includes the wait and made the three numbers disagree (R12.2).
     trip: (t, arrive) =>
-      `${t.mode in COPY.en.modes ? COPY.en.modes[t.mode] : "Bus"} ${t.line} in ${t.waitMin} min, ${t.durationMin} min to get there` +
+      `${t.mode in COPY.en.modes ? COPY.en.modes[t.mode] : "Bus"} ${t.line} in ${t.waitMin} min, ` +
+      `${t.rideMin ?? t.durationMin} min on board` +
       (arrive ? `, arriving ${arrive}.` : "."),
     modes: { bus: "Bus", train: "Train", ferry: "Ferry", lightrail: "Light rail", metro: "Metro", coach: "Coach" },
     failed: "No answer right now.",
@@ -52,6 +55,11 @@ const COPY = {
     checkMatch: (n, km) => `Check this: ${n}${km ? ` (${km} km away)` : ""}`,
     notFound: "Nothing matched — check the address",
     settingsTitle: "Settings",
+    language: "Language",
+    appearance: "Appearance",
+    themeAuto: "Automatic",
+    themeLight: "Light",
+    themeDark: "Dark",
     newPlace: "New place",
     editPlace: "Edit",
     addPlace: "Add a place",
@@ -94,10 +102,15 @@ const COPY = {
     // "路" is the bus-route suffix; a train line takes "号线", and ferry/light-rail numbers take neither.
     trip: (t, arrive) => {
       const word = COPY["zh-Hans"].modes[t.mode] || "公交";
-      const ride = t.mode === "train" ? `${t.line}号线`
+      // A rail "line" is a code (CCN, T9), which says nothing to this audience; where it goes does.
+      const named = !/^\d+[A-Za-z]?$/.test(String(t.line)) && t.towards;
+      const ride = named
+        ? (t.mode === "train" || t.mode === "metro" ? `开往${t.towards}的${word}` : `${word}（开往${t.towards}）`)
+        : t.mode === "train" || t.mode === "metro" ? `${t.line}号线`
         : t.mode === "bus" || t.mode === "coach" ? `${word}${t.line}路`
         : `${word}${t.line}`;
-      return `坐${ride}，${t.waitMin}分钟后有车，路上大约${t.durationMin}分钟${arrive ? `，${arrive}到` : ""}。`;
+      // 车上 (on board) rather than 路上 (door to door): 等车时间 + 车上时间 = 到站时间 (R12.2).
+      return `坐${ride}，${t.waitMin}分钟后有车，车上大约${t.rideMin ?? t.durationMin}分钟${arrive ? `，${arrive}到` : ""}。`;
     },
     modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },
     failed: "现在查不到。",
@@ -109,6 +122,11 @@ const COPY = {
     checkMatch: (n, km) => `请确认：${n}${km ? `（约${km}公里）` : ""}`,
     notFound: "找不到这个地址，请检查",
     settingsTitle: "设置",
+    language: "语言",
+    appearance: "外观",
+    themeAuto: "自动",
+    themeLight: "浅色",
+    themeDark: "深色",
     newPlace: "新地点",
     editPlace: "编辑",
     addPlace: "添加地点",
@@ -172,15 +190,16 @@ function renamePresets(stored) {
   for (const r of RENAMED) {
     const place = stored.places.find((p) => p.id === r.id);
     if (!place || place.glyph !== r.was.glyph) continue;
+    // A coordinate means a person geocoded and accepted this place: not ours to rewrite (R14.1).
+    if (place.coord) continue;
+    // Every name has to be the shipped one. "any name matches" let a helper who renamed only the
+    // Chinese label (陈医生, with name.en still "Doctor") look untouched, and their label was lost.
     const names = Object.values(place.name || {});
-    if (!names.some((n) => r.was.names.includes(n))) continue;
-    place.name = { ...place.name, ...r.now.name };
+    if (!names.length || !names.every((n) => r.was.names.includes(n))) continue;
+    place.name = { ...r.now.name };
     place.glyph = r.now.glyph;
-    if (r.wasAddress !== undefined && (place.address || "") === r.wasAddress) {
-      place.address = "";
-      place.coord = null;
-      place.resolvedName = null;
-    }
+    // Address text only: whatever else this place carries stays (R14.1, part 2).
+    if (r.wasAddress !== undefined && (place.address || "") === r.wasAddress) place.address = "";
   }
 }
 
@@ -227,27 +246,67 @@ function load() {
       }
     }
   } catch (e) { /* private mode, corrupt value: fall through to the seed */ }
-  return { lang: pickLang(), seedVersion: SEED_VERSION, places: SEED.map((p) => ({ ...p })) };
+  return { lang: pickLang(), theme: "auto", seedVersion: SEED_VERSION, places: SEED.map((p) => ({ ...p })) };
 }
 
 function save() {
   // Private browsing (iOS Safari especially) throws on write. Swallowing that silently is how a
   // helper spends ten minutes setting up places that vanish — so the failure is recorded and shown.
+  const before = storageOk;
   try {
     localStorage.setItem(STORE, JSON.stringify(state));
     storageOk = true;
   } catch (e) {
     storageOk = false;
   }
+  // Painted here rather than on sheet open: the helper is still typing when the write fails, and a
+  // warning that appears only after 完成 → gear arrives too late (R10.2). `el` may not exist yet —
+  // save() is called at module scope — hence the lookup.
+  if (before !== storageOk) {
+    const warn = document.getElementById("storageWarn");
+    if (warn) {
+      warn.hidden = storageOk;
+      warn.textContent = t().storageWarn;
+    }
+  }
 }
 
 const t = () => COPY[state.lang] || COPY[DEFAULT_LANG];
 
-/* Arrival as a clock time in the reader's own convention (zh: 17:42, en: 5:42 pm). */
+/* ---------- light / dark / automatic ---------- */
+
+const THEMES = [
+  { id: "auto", label: () => t().themeAuto },
+  { id: "light", label: () => t().themeLight },
+  { id: "dark", label: () => t().themeDark },
+];
+
+function applyTheme() {
+  if (!window.__themeWatch) {
+    window.__themeWatch = true;
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      if (!state.theme || state.theme === "auto") applyTheme();
+    });
+  }
+  const theme = state.theme === "light" || state.theme === "dark" ? state.theme : "";
+  // No attribute means "follow the phone", which is what the media query keys off.
+  if (theme) document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+  document.documentElement.style.colorScheme = theme || "light dark";
+  const dark = theme === "dark" ||
+    (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = dark ? "#101312" : "#ffffff";
+}
+
+/* Arrival as a clock time in the reader's own convention (zh: 17:42, en: 5:42 pm), and always in
+ * Sydney time: the app only runs in NSW, and a phone left on 北京时间 read three hours early (R12.1). */
 function clock(iso) {
   const d = new Date(iso);
   if (!iso || Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString(state.lang === "en" ? "en-AU" : "zh-CN", { hour: "numeric", minute: "2-digit" });
+  const opts = { hour: "numeric", minute: "2-digit", timeZone: "Australia/Sydney" };
+  if (state.lang === "en") return d.toLocaleTimeString("en-AU", opts);
+  return d.toLocaleTimeString("zh-CN", { ...opts, hourCycle: "h23" });
 }
 const nameOf = (place) => (place.name && (place.name[state.lang] || place.name.en)) || place.address;
 
@@ -276,6 +335,9 @@ const el = {
   manage: $("manage"),
   manageTitle: $("manageTitle"),
   langRow: $("langRow"),
+  langLabel: $("langLabel"),
+  themeRow: $("themeRow"),
+  themeLabel: $("themeLabel"),
   place: $("place"),
   placeTitle: $("placeTitle"),
   placeName: $("placeName"),
@@ -286,6 +348,7 @@ const el = {
   placeWarn: $("placeWarn"),
   placeDel: $("placeDel"),
   placeDone: $("placeDone"),
+  editPlace: $("editPlace"),
   closeManage: $("closeManage"),
   verBtn: $("verBtn"),
   verMsg: $("verMsg"),
@@ -305,7 +368,6 @@ function render() {
 }
 
 function tile(place) {
-  const c = t();
   const li = document.createElement("li");
   li.className = "tile-wrap";
 
@@ -324,17 +386,16 @@ function tile(place) {
   name.textContent = nameOf(place);
 
   b.append(face, name);
-  b.addEventListener("click", () => openAnswer(place));
-
-  // The pencil is the helper's way in: maintenance belongs to the place it belongs to.
-  const edit = document.createElement("button");
-  edit.type = "button";
-  edit.className = "tile-edit";
-  edit.setAttribute("aria-label", `${c.editPlace} ${nameOf(place)}`);
-  edit.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  edit.addEventListener("click", (e) => { e.stopPropagation(); openPlace(place); });
-
-  li.append(b, edit);
+  b.addEventListener("click", () => {
+    // Nothing to answer with yet: sending someone to a card that says 请先填地址 is a dead end, so
+    // the tap opens the place itself and the address field is right there to fill in.
+    if (!place.address && !place.coord) return openPlace(place);
+    // Flagged as a bad match when it was set up: ask for the address to be fixed instead of answering
+    // from a coordinate nobody confirmed (R6.3, R7.1, R10.1).
+    if (place.suspect) return openPlace(place);
+    openAnswer(place);
+  });
+  li.append(b);
   return li;
 }
 
@@ -367,7 +428,10 @@ function show(which) {
  */
 const NSW = [
   [141.0, -29.0], [148.0, -29.0], [149.0, -28.7], [150.5, -28.5], [152.0, -28.3],
-  [153.0, -28.2], [153.6, -28.3], [153.6, -30.0], [152.5, -32.5], [151.5, -34.0],
+  // The old straight edge ran inland of Tweed Heads and Byron Bay, so the app refused towns the
+  // provider answers for. These follow the coast (R13.1).
+  [152.9, -28.25], [153.55, -28.16], [153.65, -28.35], [153.63, -29.0],
+  [152.5, -32.5], [151.5, -34.0],
   [150.2, -36.0], [149.9, -37.5], [148.0, -36.5], [146.0, -36.0], [144.0, -35.5],
   [142.0, -34.6], [141.0, -34.0],
 ];
@@ -449,6 +513,7 @@ async function openAnswer(place, opts = {}) {
   const seq = ++lookSeq;
   let mode = "transit";
   el.closeSheet.textContent = c.back;
+  el.editPlace.setAttribute("aria-label", `${c.editPlace} ${nameOf(place)}`);
   // The hand-off link does not depend on the trip, so it is set before the lookup: an
   // "Open in Maps" button still pointing at "#" during a slow fetch is a trap. A place with no
   // address has nowhere to hand off to, so that button is simply not offered.
@@ -476,6 +541,13 @@ async function openAnswer(place, opts = {}) {
       if (seq !== lookSeq) return;
       mode = trip.mode;
       el.summary.textContent = c.trip(trip, clock(trip.arriveISO));
+      // The name that came back with the trip, not only the one the helper stored: on an unresolved
+      // place these differ, and the difference is the whole warning (R11.1, R5.2).
+      const tripName = (trip.resolvedName || "").trim();
+      if (tripName && tripName !== addr) {
+        el.destMatch.textContent = c.routeTo(tripName);
+        el.destMatch.hidden = false;
+      }
       // Anything that is not the live provider gets said out loud, in the answer card.
       if (trip.provider !== "tfnsw") {
         el.stamp.textContent = c.demo;
@@ -507,17 +579,52 @@ function openManage() {
   el.storageWarn.textContent = c.storageWarn;
   el.verMsg.textContent = c.checkUpdates;
 
+  el.langLabel.textContent = c.language;
+  el.themeLabel.textContent = c.appearance;
   el.langRow.replaceChildren(
     ...LANGS.map((lang) => {
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = lang.label;
       b.setAttribute("aria-pressed", String(state.lang === lang.id));
+      b.setAttribute("aria-label", `${c.language}: ${lang.label}`);
       b.addEventListener("click", () => { state.lang = lang.id; save(); render(); openManage(); });
       return b;
     }),
   );
+  const theme = state.theme || "auto";
+  el.themeRow.replaceChildren(
+    ...THEMES.map((th) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = th.label();
+      b.setAttribute("aria-pressed", String(theme === th.id));
+      b.addEventListener("click", () => { state.theme = th.id; applyTheme(); save(); openManage(); });
+      return b;
+    }),
+  );
   show("manage");
+}
+
+/* ---------- keeping the answer current ----------
+ * A bus answer ages: "6分钟后有车" is wrong within two minutes. The sheet refreshes itself once a
+ * minute while it is open, and the refresh does not blank the answer first — a flicker to
+ * 正在查询… every sixty seconds would look like the app had lost the answer.
+ */
+
+let refreshTimer = 0;
+
+function startRefresh(place) {
+  stopRefresh();
+  refreshTimer = setInterval(() => {
+    if (document.hidden || el.sheet.hidden) return;
+    openAnswer(place, { refresh: true });
+  }, 60_000);
+}
+
+function stopRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = 0;
 }
 
 /* ---------- one place, in its own overlay ----------
@@ -597,8 +704,13 @@ function kmApart(a, b) {
 function suspectMatch(address, hit) {
   const typed = new Set(words(address));
   const shared = words(hit.name).some((w) => typed.has(w));
+  // The suburb stop_finder itself reported is the strongest signal available: "12 Crown Street,
+  // Sydney" came back in Crows Nest while sharing no identifying word with what was typed, and
+  // "Camperdown" in the typed address matches the locality on a good hit.
+  const locality = words(hit.locality || "");
+  const localityOk = locality.length === 0 || locality.some((w) => typed.has(w));
   const away = Math.round(kmApart(hit.coord, SYDNEY));
-  return { suspicious: !shared || away > 60, away: away > 60 ? away : 0 };
+  return { suspicious: !shared || !localityOk || away > 60, away: away > 60 ? away : 0 };
 }
 
 function scheduleResolve(place) {
@@ -620,13 +732,17 @@ function renderAlternatives(place, others) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "origin";
-      b.textContent = m.name;
+      // The suburb is the difference between two parks with the same name (R10.1).
+      b.textContent = m.locality && !m.name.includes(m.locality) ? `${m.name} · ${m.locality}` : m.name;
       b.addEventListener("click", () => {
+        const { suspicious, away } = suspectMatch(place.address, m);
         place.coord = m.coord;
         place.resolvedName = m.name;
+        place.suspect = suspicious;
         save();
-        el.placeStatus.dataset.kind = "ok";
-        el.placeStatus.textContent = t().matched(m.name);
+        // Picking from the list is a choice, but it is not a check: if the guard still objects, say so.
+        el.placeStatus.dataset.kind = suspicious ? "warn" : "ok";
+        el.placeStatus.textContent = suspicious ? t().checkMatch(m.name, away) : t().matched(m.name);
         el.placeAlts.replaceChildren();
       });
       return b;
@@ -640,9 +756,17 @@ async function runResolve(place) {
   if (editing !== place) return;                 // the helper moved on to another place
   el.placeAlts.replaceChildren();
   if (hit) {
-    place.coord = hit.coord;
-    place.resolvedName = hit.name;
     const { suspicious, away } = suspectMatch(place.address, hit);
+    if (suspicious) {
+      // Warned, therefore not confirmed: storing the coordinate here is what let a 15 km-wrong park
+      // drive a real answer while the warning was only on the helper's screen (R6.2, R7.4).
+      place.coord = null;
+      place.suspect = true;
+    } else {
+      place.coord = hit.coord;
+      place.suspect = false;
+    }
+    place.resolvedName = hit.name;
     el.placeStatus.dataset.kind = suspicious ? "warn" : "ok";
     el.placeStatus.textContent = suspicious ? c.checkMatch(hit.name, away) : c.matched(hit.name);
     // A wrong first match is the common failure, and stop_finder gave us the runners-up: let the
@@ -717,6 +841,10 @@ el.placeDel.addEventListener("click", () => {
   closePlace();
 });
 
+el.editPlace.addEventListener("click", () => {
+  if (currentPlace) openPlace(currentPlace);
+});
+
 el.placeDone.addEventListener("click", closePlace);
 el.place.addEventListener("click", (e) => { if (e.target === el.place) closePlace(); });
 
@@ -787,10 +915,18 @@ function gateNeedsGesture(c) {
   el.gateSkip.hidden = false;
 }
 
+/* What the last region check concluded, so a launch does not pay for the same answer twice. */
+const REGION_KEY = "whereToGo.region.v1";
+function regionVerdict() {
+  try { return localStorage.getItem(REGION_KEY) || ""; } catch { return ""; }
+}
+function setRegionVerdict(v) {
+  try { localStorage.setItem(REGION_KEY, v); } catch { /* private mode: the gate just re-checks */ }
+}
+
 async function boot() {
+  applyTheme();
   const c = t();
-  el.gateTitle.textContent = c.ask;
-  el.gateMsg.textContent = c.gateChecking;
 
   // A site-level refusal cannot be re-prompted, and it is not a reason to block the app: the
   // traveller may still want the Maps hand-off.
@@ -800,14 +936,27 @@ async function boot() {
   } catch { /* the query is not implemented everywhere */ }
   if (state0 === "denied") return closeGate();
 
+  // Seen before: nothing to gate on, so the launch is instant. Gating every launch made a slow fix a
+  // ten-second blank screen and then blamed location for a timeout (R13.2).
+  const known = regionVerdict();
+  if (known === "in") return closeGate();
+  if (known === "out") return regionBlocked(c);
+
+  el.gateTitle.textContent = c.ask;
+  el.gateMsg.textContent = c.gateChecking;
   const loc = await askLocation({ maxAge: 0 });
   if (loc.coord) {
     location = loc;
-    if (inNSW(loc.coord)) return closeGate();
+    if (inNSW(loc.coord)) {
+      setRegionVerdict("in");
+      return closeGate();
+    }
+    setRegionVerdict("out");
     return regionBlocked(c);
   }
-  // Nothing came back: the prompt needs a real gesture on some browsers, so offer one.
-  gateNeedsGesture(c);
+  // No fix on a first run is not a reason to hold the tiles back. The answer path has its own, more
+  // accurate thing to say when someone actually taps a place.
+  closeGate();
 }
 
 el.gateAllow.addEventListener("click", async () => {
@@ -818,7 +967,11 @@ el.gateAllow.addEventListener("click", async () => {
   const loc = await askLocation({ maxAge: 0 });
   if (loc.coord) {
     location = loc;
-    if (inNSW(loc.coord)) return closeGate();
+    if (inNSW(loc.coord)) {
+      setRegionVerdict("in");
+      return closeGate();
+    }
+    setRegionVerdict("out");
     return regionBlocked(c);
   }
   gateNeedsGesture(c);
@@ -826,7 +979,9 @@ el.gateAllow.addEventListener("click", async () => {
 
 el.gateSkip.addEventListener("click", () => {
   if (gateMode === "region") {
-    location = null;              // forget the cached fix and ask again
+    // 重新定位: forget both the cached fix and the verdict, then check again.
+    location = null;
+    setRegionVerdict("");
     boot();
     return;
   }

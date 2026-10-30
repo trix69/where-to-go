@@ -49,6 +49,12 @@ def must(text, old, new, what):
 
 
 def build(out):
+    # R6.5: a test build carrying a localhost proxy fails for every visitor, silently, and the only
+    # symptom is "no answer right now". Refuse instead of shipping it.
+    cfg = (ROOT / "config.js").read_text(encoding="utf-8")
+    if re.search(r"127\.0\.0\.1|localhost", cfg):
+        sys.exit("test build: config.js points at a local proxy — set proxyBase back to the Worker")
+
     for f in FILES:
         shutil.copy2(ROOT / f, out / f)
     for d in DIRS:

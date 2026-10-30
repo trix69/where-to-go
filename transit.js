@@ -37,7 +37,8 @@ function mockTrip(place) {
     mode: mode.id,
     line: mode.lines[h % mode.lines.length],
     waitMin: 2 + (h % 11),          // 2–12 minutes
-    durationMin: 9 + (h % 26),      // 9–34 minutes
+    durationMin: 9 + (h % 26),      // 9–34 minutes, door to door
+    rideMin: 7 + (h % 22),          // on board; the sentence prints wait + ride
     arriveISO: new Date(Date.now() + (2 + (h % 11) + 9 + (h % 26)) * 60000).toISOString(),
     walkToStopMin: h % 5,
     realtime: false,
@@ -60,8 +61,15 @@ export async function resolveAddress(text) {
     signal: AbortSignal.timeout(9000),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok || !body || body.ok !== true) return null;
-  return { coord: body.coord, name: body.name, others: Array.isArray(body.matches) ? body.matches : [] };
+  // A sample or unknown provider must never hand back a coordinate: travel time trusts whatever is
+  // stored here, so "sample" would leak invented data into a real answer (R6.4).
+  if (!res.ok || !body || body.ok !== true || body.provider !== "tfnsw") return null;
+  return {
+    coord: body.coord,
+    name: body.name,
+    locality: body.locality || "",
+    others: Array.isArray(body.matches) ? body.matches : [],
+  };
 }
 
 /**
@@ -104,7 +112,11 @@ export async function getTrip(place, opts = {}) {
  * and iOS routes it to the installed app when there is one.
  */
 export function mapsUrl(place, mode) {
-  const dest = encodeURIComponent(place.address);
+  // The trip is computed from the coordinate when there is one, so the hand-off has to be the same
+  // point: address text and stored coordinate can name different parks, and the second tap then
+  // contradicts the first (R5.3, R11.2).
+  const coord = place.coord && Number.isFinite(place.coord.lat) && Number.isFinite(place.coord.lng);
+  const dest = encodeURIComponent(coord ? `${place.coord.lat},${place.coord.lng}` : place.address);
   // Unknown modes fall back to transit: this app exists for public transport, and "walking" as a
   // silent default sent a broken lookup's hand-off to a footpath.
   const transit = !["walk", "walking"].includes(mode);

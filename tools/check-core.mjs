@@ -8,7 +8,8 @@
  * from the live API, so it proves the parser matches the documented shape — not that TfNSW still
  * returns that shape. That needs a real key.
  */
-import { buildTripUrl, summarise, tfCoord } from "../proxy/core.mjs";
+import { buildTripUrl, summarise, tfCoord, variantsFor } from "../proxy/core.mjs";
+import { allowed } from "../proxy/worker.js";
 
 let failures = 0;
 const ok = (name, cond, detail) => {
@@ -98,6 +99,71 @@ ok("timetabled (not real-time) is reported as such", tt.realtime === false);
 ok("no journeys → no-route", summarise({}, new Date()).error === "no-route");
 ok("walk-only journey is refused, not shown as a 0-minute bus", summarise({ journeys: [{ legs: [{ origin: { departureTimePlanned: "2026-10-29T09:30:00Z" }, destination: { arrivalTimePlanned: "2026-10-29T09:40:00Z" } }] }] }, new Date()).error === "walk-only");
 ok("missing times → no-times", summarise({ journeys: [{ legs: [{ transportation: { product: { name: "Bus" } } }] }] }, new Date()).error === "no-times");
+
+
+/* --- the numbers in the sentence have to agree with the clock beside them (R12.2) ------- */
+
+{
+  const j = {
+    journeys: [{
+      legs: [
+        { origin: { departureTimePlanned: "2026-10-30T08:50:00Z" }, destination: { arrivalTimePlanned: "2026-10-30T08:53:00Z" } },
+        {
+          transportation: { number: "412", product: { class: 5, name: "Bus" } },
+          origin: { departureTimeEstimated: "2026-10-30T08:53:00Z" },
+          destination: { arrivalTimeEstimated: "2026-10-30T09:22:00Z" },
+        },
+      ],
+    }],
+  };
+  const now = new Date("2026-10-30T08:46:00Z");
+  const t = summarise(j, now);
+  const mins = (iso) => Math.round((new Date(iso) - now) / 60000);
+  ok("ride is departure → arrival (29 min)", t.rideMin === 29, String(t.rideMin));
+  ok("wait + ride lands on the arrival clock (±1 min)",
+    Math.abs(mins(t.arriveISO) - (t.waitMin + t.rideMin)) <= 1,
+    `clock ${mins(t.arriveISO)}, wait ${t.waitMin} + ride ${t.rideMin}`);
+  ok("door-to-door duration is still reported (08:50 → 09:22 = 32 min)", t.durationMin === 32, String(t.durationMin));
+}
+
+/* --- a naive timestamp is Sydney wall-clock in both halves of the year (R5.6) ----------- */
+
+{
+  const winter = summarise({ journeys: [{ legs: [{
+    transportation: { number: "T4", product: { class: 1, name: "Train" } },
+    origin: { departureTimePlanned: "2026-07-01T10:00:00" },      // AEDT off: +10:00
+    destination: { arrivalTimePlanned: "2026-07-01T10:20:00" },
+  }] }] }, new Date("2026-06-30T23:45:00Z"));
+  ok("naive July stamp read as AEST (+10), so a 10:00 departure is 15 min away",
+    winter.waitMin === 15, String(winter.waitMin));
+  const summer = summarise({ journeys: [{ legs: [{
+    transportation: { number: "T4", product: { class: 1, name: "Train" } },
+    origin: { departureTimePlanned: "2026-12-01T10:00:00" },      // AEDT: +11:00
+    destination: { arrivalTimePlanned: "2026-12-01T10:20:00" },
+  }] }] }, new Date("2026-11-30T22:45:00Z"));
+  ok("naive December stamp read as AEDT (+11), so a 10:00 departure is 15 min away",
+    summer.waitMin === 15, String(summer.waitMin));
+}
+
+/* --- the address retry that makes the right park reachable (R5.4) ----------------------- */
+
+ok("city token stripped for the retry",
+  JSON.stringify(variantsFor("Centennial Park, Sydney NSW 2021")) === JSON.stringify(["Centennial Park, Sydney NSW 2021", "Centennial Park"]),
+  JSON.stringify(variantsFor("Centennial Park, Sydney NSW 2021")));
+ok("a bare place name is asked once, not twice",
+  variantsFor("12 Crown Street").length === 1, JSON.stringify(variantsFor("12 Crown Street")));
+
+
+/* --- the Worker only answers a browser page for this app (R7.5) -------------------------- */
+
+const req = (headers) => ({ headers: { get: (k) => headers[k.toLowerCase()] || null } });
+ok("github.io origin allowed", allowed(req({ origin: "https://trix69.github.io" })) === true);
+ok("localhost origin allowed", allowed(req({ origin: "http://127.0.0.1:8807" })) === true);
+ok("no Origin and no Referer is refused (curl, scrapers)",
+  allowed(req({})) === false);
+ok("another site is refused", allowed(req({ origin: "https://example.com" })) === false);
+ok("a github.io referer still allowed when Origin is absent",
+  allowed(req({ referer: "https://trix69.github.io/where-to-go-test/" })) === true);
 
 console.log(failures ? `\n${failures} failed` : "\nall passed");
 process.exit(failures ? 1 : 0);
