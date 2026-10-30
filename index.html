@@ -46,26 +46,35 @@
       <p class="dest-match" id="destMatch" hidden></p>
       <p class="summary" id="summary" role="status" aria-live="polite"></p>
       <p class="stamp" id="stamp" hidden></p>
-      <div class="origins" id="originChoices" hidden>
-        <p class="origins-ask" id="originAsk">Where are you starting from?</p>
-        <div class="origins-list" id="originList"></div>
-      </div>
       <a class="go" id="goBtn" href="#" rel="noopener">Open in Maps</a>
       <button class="retry" id="retryLoc" type="button" hidden>Use my location</button>
       <button class="back" id="closeSheet" type="button">Back</button>
     </div>
   </section>
 
-  <!-- Helper's screen, not the traveller's. -->
+  <!-- Settings: the two things that are not about a place. Addresses are edited on the tile itself. -->
   <section class="sheet" id="manage" hidden aria-labelledby="manageTitle">
     <div class="panel">
-      <h2 class="sheet-title" id="manageTitle">Places</h2>
+      <h2 class="sheet-title" id="manageTitle">Settings</h2>
       <p class="warn" id="storageWarn" hidden></p>
       <div class="lang" id="langRow" role="group" aria-label="Language"></div>
-      <ul class="places" id="places"></ul>
-      <button class="add" id="addBtn" type="button">Add a place</button>
       <button type="button" class="ver" id="verBtn"><span><span id="verLabel">Version</span> <span id="appVersion">0.1</span></span> · <span id="verMsg">Check for updates</span></button>
       <button class="back" id="closeManage" type="button">Done</button>
+    </div>
+  </section>
+
+  <!-- One place, opened from its pencil. Has the delete, and the delete asks twice. -->
+  <section class="sheet" id="place" hidden aria-labelledby="placeTitle">
+    <div class="panel">
+      <h2 class="sheet-title" id="placeTitle"></h2>
+      <label class="fld">Name<input id="placeName" type="text" autocomplete="off"></label>
+      <label class="fld glyphfld">Icon<input id="placeGlyph" type="text" maxlength="4" autocomplete="off"></label>
+      <label class="fld">Address<input id="placeAddr" type="text" autocomplete="off" inputmode="text"></label>
+      <p class="resolved" id="placeStatus" hidden></p>
+      <div class="alts" id="placeAlts"></div>
+      <p class="warn" id="placeWarn" hidden></p>
+      <button class="del" id="placeDel" type="button">Delete</button>
+      <button class="go" id="placeDone" type="button">Done</button>
     </div>
   </section>
 

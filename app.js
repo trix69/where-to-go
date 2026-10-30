@@ -30,8 +30,6 @@ const COPY = {
     locationOff: "Location is off. Allow it for this app, then try again.",
     locationFailed: "Couldn't get your location. Try again.",
     useMyLocation: "Use my location",
-    fromHome: "From home",
-    fromPlace: (n) => `From ${n}`,
     routeTo: (n) => `Points to: ${n}`,
     gateChecking: "Checking your location…",
     gateAllow: "Allow location",
@@ -39,7 +37,6 @@ const COPY = {
     gateRetry: "Check again",
     regionTitle: "Not here yet",
     regionMsg: "This app only works in New South Wales, Australia. It isn't available in your region yet.",
-    chooseOrigin: "Where are you starting from?",
     storageWarn: "This browser isn't saving changes (private browsing?). Places will be lost when you close the tab.",
     demo: "SAMPLE DATA — no live transit yet",
     trip: (t, arrive) =>
@@ -54,6 +51,12 @@ const COPY = {
     matched: (n) => `Routes to: ${n}`,
     checkMatch: (n, km) => `Check this: ${n}${km ? ` (${km} km away)` : ""}`,
     notFound: "Nothing matched — check the address",
+    settingsTitle: "Settings",
+    newPlace: "New place",
+    editPlace: "Edit",
+    addPlace: "Add a place",
+    deleteConfirm: "Delete now",
+    deleteWarn: (n) => `This can't be undone: ${n}. Tap "Delete now" if you mean it.`,
     versionLabel: "Version",
     checkUpdates: "Check for updates",
     checking: "Checking…",
@@ -79,8 +82,6 @@ const COPY = {
     locationOff: "定位已关闭。请允许定位，再试一次。",
     locationFailed: "暂时定位不到，请重试。",
     useMyLocation: "使用我的位置",
-    fromHome: "从家出发",
-    fromPlace: (n) => `从${n}出发`,
     routeTo: (n) => `定位到：${n}`,
     gateChecking: "正在确认位置…",
     gateAllow: "允许定位",
@@ -88,7 +89,6 @@ const COPY = {
     gateRetry: "重新定位",
     regionTitle: "本地区还没开通",
     regionMsg: "这个应用目前只在澳大利亚新南威尔士州（NSW）可以使用，您所在的地区还没有开通。",
-    chooseOrigin: "从哪里出发？",
     storageWarn: "当前浏览器无法保存（无痕浏览？）。关闭后这些地点会丢失。",
     demo: "示例数据 — 还没接实时公交",
     // "路" is the bus-route suffix; a train line takes "号线", and ferry/light-rail numbers take neither.
@@ -108,6 +108,12 @@ const COPY = {
     matched: (n) => `将到：${n}`,
     checkMatch: (n, km) => `请确认：${n}${km ? `（约${km}公里）` : ""}`,
     notFound: "找不到这个地址，请检查",
+    settingsTitle: "设置",
+    newPlace: "新地点",
+    editPlace: "编辑",
+    addPlace: "添加地点",
+    deleteConfirm: "确认删除",
+    deleteWarn: (n) => `删除后不能恢复：${n}。确定要删除，请再点「确认删除」。`,
     versionLabel: "版本",
     checkUpdates: "检查更新",
     checking: "正在检查…",
@@ -267,14 +273,19 @@ const el = {
   closeSheet: $("closeSheet"),
   retryLoc: $("retryLoc"),
   storageWarn: $("storageWarn"),
-  originChoices: $("originChoices"),
-  originAsk: $("originAsk"),
-  originList: $("originList"),
   manage: $("manage"),
   manageTitle: $("manageTitle"),
   langRow: $("langRow"),
-  places: $("places"),
-  addBtn: $("addBtn"),
+  place: $("place"),
+  placeTitle: $("placeTitle"),
+  placeName: $("placeName"),
+  placeGlyph: $("placeGlyph"),
+  placeAddr: $("placeAddr"),
+  placeStatus: $("placeStatus"),
+  placeAlts: $("placeAlts"),
+  placeWarn: $("placeWarn"),
+  placeDel: $("placeDel"),
+  placeDone: $("placeDone"),
   closeManage: $("closeManage"),
   verBtn: $("verBtn"),
   verMsg: $("verMsg"),
@@ -290,11 +301,14 @@ function render() {
   el.ask.textContent = c.ask;
   el.gear.setAttribute("aria-label", c.settings);
 
-  el.tiles.replaceChildren(...state.places.map(tile));
+  el.tiles.replaceChildren(...state.places.map(tile), addTile());
 }
 
 function tile(place) {
+  const c = t();
   const li = document.createElement("li");
+  li.className = "tile-wrap";
+
   const b = document.createElement("button");
   b.type = "button";
   b.className = "tile";
@@ -311,6 +325,29 @@ function tile(place) {
 
   b.append(face, name);
   b.addEventListener("click", () => openAnswer(place));
+
+  // The pencil is the helper's way in: maintenance belongs to the place it belongs to.
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "tile-edit";
+  edit.setAttribute("aria-label", `${c.editPlace} ${nameOf(place)}`);
+  edit.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  edit.addEventListener("click", (e) => { e.stopPropagation(); openPlace(place); });
+
+  li.append(b, edit);
+  return li;
+}
+
+function addTile() {
+  const c = t();
+  const li = document.createElement("li");
+  li.className = "tile-wrap";
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "tile tile-add";
+  b.setAttribute("aria-label", c.addPlace);
+  b.innerHTML = `<span class="face" aria-hidden="true">＋</span><span class="name">${c.addPlace}</span>`;
+  b.addEventListener("click", () => openPlace(null));
   li.append(b);
   return li;
 }
@@ -318,6 +355,7 @@ function tile(place) {
 function show(which) {
   el.sheet.hidden = which !== "answer";
   el.manage.hidden = which !== "manage";
+  el.place.hidden = which !== "place";
   document.body.style.overflow = which ? "hidden" : "";
 }
 
@@ -381,61 +419,15 @@ function askLocation(opts = {}) {
   });
 }
 
-async function originFor(place, forced) {
-  if (forced) return forced;                    // the traveller picked a starting place by hand
+async function originFor() {
+  // Every lookup starts where the phone is. There is no "from home" fallback any more: guessing that
+  // someone is at home sends a person standing at a bus stop to the wrong place, and the Home place
+  // no longer has an address to guess with.
   const loc = await askLocation();
-  if (loc.coord) {
-    location = loc;
-    return { coord: loc.coord };
-  }
-  // No device location: the place called Home is a fallback for somewhere else, but it cannot be the
-  // origin when the destination IS home, and it must be said out loud rather than assumed.
-  const home = state.places.find((p) => p.id === "home" && p.address);
-  if (home && home.id !== place.id) return { address: home.address, label: nameOf(home), error: loc.error };
-  return { error: loc.error };
+  return loc.coord ? { coord: loc.coord } : { error: loc.error };
 }
 
-/** When the origin is unknown, the other saved places are the only origins the app can offer. */
-function renderOriginChoices(place) {
-  const c = t();
-  const options = state.places.filter((p) => p.id !== place.id && (p.coord || p.address));
-  if (!options.length) return;
-  el.originAsk.textContent = c.chooseOrigin;
-  el.originList.replaceChildren(
-    ...options.map((p) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "origin";
-      b.textContent = nameOf(p);
-      b.addEventListener("click", () => openAnswer(place, { coord: p.coord, address: p.address, label: nameOf(p) }));
-      return b;
-    }),
-  );
-  el.originChoices.hidden = false;
-}
-
-let refreshTimer = null;
-
-function stopRefresh() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
-}
-
-/** Re-ask every minute while the answer is on screen: departure, duration and arrival all move. */
-function startRefresh(place, forcedOrigin) {
-  stopRefresh();
-  refreshTimer = setInterval(() => {
-    if (el.sheet.hidden || !currentPlace || currentPlace.id !== place.id) {
-      stopRefresh();
-      return;
-    }
-    openAnswer(place, forcedOrigin, { refresh: true });
-  }, 60000);
-}
-
-async function openAnswer(place, forcedOrigin = null, opts = {}) {
+async function openAnswer(place, opts = {}) {
   const c = t();
   const refresh = opts.refresh === true;
   currentPlace = place;
@@ -445,7 +437,6 @@ async function openAnswer(place, forcedOrigin = null, opts = {}) {
     el.summary.textContent = c.locating;
     el.stamp.hidden = true;
     el.retryLoc.hidden = true;
-    el.originChoices.hidden = true;
   }
   // Where this trip is actually going: the saved address, and — when it differs — the name TfNSW
   // matched, because that is what the coordinates were taken from.
@@ -471,7 +462,7 @@ async function openAnswer(place, forcedOrigin = null, opts = {}) {
   }
 
   try {
-    const origin = await originFor(place, forcedOrigin);
+    const origin = await originFor();
     if (seq !== lookSeq) return;
     if (origin.error && !origin.address) {
       // Permission is the blocker, so say that and offer the one action that can fix it.
@@ -479,8 +470,6 @@ async function openAnswer(place, forcedOrigin = null, opts = {}) {
       el.retryLoc.textContent = c.useMyLocation;
       el.retryLoc.hidden = false;
       el.go.textContent = c.stillGo;
-      // Still usable without permission: pick the place you are standing in.
-      renderOriginChoices(place);
     } else {
       if (!refresh) el.summary.textContent = c.looking;
       const trip = await getTrip(place, { origin });
@@ -491,10 +480,6 @@ async function openAnswer(place, forcedOrigin = null, opts = {}) {
       if (trip.provider !== "tfnsw") {
         el.stamp.textContent = c.demo;
         el.stamp.dataset.kind = "demo";
-        el.stamp.hidden = false;
-      } else if (origin.label) {
-        el.stamp.textContent = c.fromPlace(origin.label);
-        el.stamp.dataset.kind = "note";
         el.stamp.hidden = false;
       }
     }
@@ -508,15 +493,14 @@ async function openAnswer(place, forcedOrigin = null, opts = {}) {
   }
   if (el.go.hidden) return;
   el.go.href = mapsUrl(place, mode);
-  if (!refresh) startRefresh(place, forcedOrigin);
+  if (!refresh) startRefresh(place);
 }
 
-/* ---------- places (helper screen) ---------- */
+/* ---------- settings: language and version only ---------- */
 
 function openManage() {
   const c = t();
-  el.manageTitle.textContent = c.places;
-  el.addBtn.textContent = c.add;
+  el.manageTitle.textContent = c.settingsTitle;
   el.closeManage.textContent = c.done;
   el.verLabel.textContent = c.versionLabel;
   el.storageWarn.hidden = storageOk;
@@ -533,40 +517,54 @@ function openManage() {
       return b;
     }),
   );
-
-  el.places.replaceChildren(...state.places.map(placeRow));
   show("manage");
 }
 
-function field(labelText, value, onInput, extraClass) {
-  const label = document.createElement("label");
-  if (extraClass) label.className = extraClass;
-  label.textContent = labelText;
-  const input = document.createElement("input");
-  input.type = "text";
-  input.value = value || "";
-  input.addEventListener("input", () => onInput(input.value));
-  label.append(input);
-  return label;
+/* ---------- one place, in its own overlay ----------
+ * Address maintenance lives next to the place it belongs to: a pencil on the tile opens this sheet.
+ * Settings keeps only language and version, because editing a place is a place-shaped job.
+ */
+
+let editing = null;       // the place currently in the overlay
+let deleteArmed = false;  // first tap arms the delete, second confirms it
+let resolveTimer = null;
+
+function closePlace() {
+  editing = null;
+  deleteArmed = false;
+  show(null);
 }
 
-/* ---------- geocoding, at setup only ---------- */
-
-const resolveTimers = new Map();
-
-/** Look the address up while the helper is still on the screen, and say what it matched. */
-function scheduleResolve(place, status) {
-  if (usingMock()) return;                       // no proxy configured: nothing to ask
-  clearTimeout(resolveTimers.get(place.id));
-  status.hidden = false;
-  if (!place.address.trim()) {
-    status.hidden = true;
-    return;
+function openPlace(place) {
+  const c = t();
+  if (!place) {
+    // A new tile: created only when someone asks for one, then edited straight away.
+    place = { id: `p${Date.now()}`, name: { [state.lang]: c.newPlace }, glyph: "📍", address: "" };
+    state.places.push(place);
+    save();
+    render();
   }
-  status.dataset.kind = "pending";
-  status.textContent = t().resolving;
-  resolveTimers.set(place.id, setTimeout(() => runResolve(place, status), 700));
+  editing = place;
+  deleteArmed = false;
+  el.placeTitle.textContent = nameOf(place);
+  el.placeName.value = nameOf(place);
+  el.placeGlyph.value = place.glyph || "";
+  el.placeAddr.value = place.address || "";
+  el.placeStatus.hidden = true;
+  el.placeAlts.replaceChildren();
+  el.placeDel.textContent = c.delete;
+  el.placeDel.classList.remove("confirm");
+  el.placeWarn.hidden = true;
+  el.placeDone.textContent = c.done;
+  if (place.resolvedName && !usingMock()) {
+    el.placeStatus.hidden = false;
+    el.placeStatus.dataset.kind = "ok";
+    el.placeStatus.textContent = c.matched(place.resolvedName);
+  }
+  show("place");
 }
+
+/* ---------- geocoding, while the overlay is open ---------- */
 
 /* stop_finder matches words, not places: "Centennial Park" came back as a park near Dubbo, 300 km
  * away, and "1 Grand Drive, Centennial Park" still did. Two cheap guards make that visible instead of
@@ -603,100 +601,60 @@ function suspectMatch(address, hit) {
   return { suspicious: !shared || away > 60, away: away > 60 ? away : 0 };
 }
 
-function renderAlternatives(place, status, others) {
-  const wrap = document.createElement("div");
-  wrap.className = "alts span2";
-  for (const m of others) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "origin";
-    b.textContent = m.name;
-    b.addEventListener("click", () => {
-      place.coord = m.coord;
-      place.resolvedName = m.name;
-      save();
-      status.dataset.kind = "ok";
-      status.textContent = t().matched(m.name);
-      wrap.remove();
-    });
-    wrap.append(b);
+function scheduleResolve(place) {
+  if (usingMock()) return;                       // no proxy configured: nothing to ask
+  clearTimeout(resolveTimer);
+  if (!place.address.trim()) {
+    el.placeStatus.hidden = true;
+    return;
   }
-  status.after(wrap);
+  el.placeStatus.hidden = false;
+  el.placeStatus.dataset.kind = "pending";
+  el.placeStatus.textContent = t().resolving;
+  resolveTimer = setTimeout(() => runResolve(place), 700);
 }
 
-async function runResolve(place, status) {
+function renderAlternatives(place, others) {
+  el.placeAlts.replaceChildren(
+    ...others.map((m) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "origin";
+      b.textContent = m.name;
+      b.addEventListener("click", () => {
+        place.coord = m.coord;
+        place.resolvedName = m.name;
+        save();
+        el.placeStatus.dataset.kind = "ok";
+        el.placeStatus.textContent = t().matched(m.name);
+        el.placeAlts.replaceChildren();
+      });
+      return b;
+    }),
+  );
+}
+
+async function runResolve(place) {
   const c = t();
-  status.parentElement.querySelectorAll(".alts").forEach((n) => n.remove());
   const hit = await resolveAddress(place.address);
+  if (editing !== place) return;                 // the helper moved on to another place
+  el.placeAlts.replaceChildren();
   if (hit) {
     place.coord = hit.coord;
     place.resolvedName = hit.name;
     const { suspicious, away } = suspectMatch(place.address, hit);
-    status.dataset.kind = suspicious ? "warn" : "ok";
-    status.textContent = suspicious ? c.checkMatch(hit.name, away) : c.matched(hit.name);
+    el.placeStatus.dataset.kind = suspicious ? "warn" : "ok";
+    el.placeStatus.textContent = suspicious ? c.checkMatch(hit.name, away) : c.matched(hit.name);
     // A wrong first match is the common failure, and stop_finder gave us the runners-up: let the
     // helper pick the address they meant instead of leaving them to retype it.
-    if (suspicious && hit.others && hit.others.length) renderAlternatives(place, status, hit.others);
+    if (suspicious && hit.others && hit.others.length) renderAlternatives(place, hit.others);
   } else {
     place.coord = null;
     place.resolvedName = null;
-    status.dataset.kind = "warn";
-    status.textContent = c.notFound;
+    el.placeStatus.dataset.kind = "warn";
+    el.placeStatus.textContent = c.notFound;
   }
   save();
-}
-
-function placeRow(place) {
-  const c = t();
-  const li = document.createElement("li");
-  li.className = "place";
-
-  const status = document.createElement("p");
-  status.className = "resolved span2";
-  // Only meaningful with a provider configured: in mock mode nothing was looked up, so claiming
-  // "routes to X" would be a promise the app cannot keep.
-  status.hidden = usingMock() || !place.resolvedName;
-  if (place.resolvedName) {
-    status.dataset.kind = "ok";
-    status.textContent = c.matched(place.resolvedName);
-  }
-
-  const glyph = field(c.glyph, place.glyph, (v) => { place.glyph = v; save(); render(); }, "glyph");
-  glyph.querySelector("input").setAttribute("maxlength", "4");
-  glyph.querySelector("input").setAttribute("inputmode", "text");
-
-  li.append(
-    field(c.name, nameOf(place), (v) => {
-      place.name = place.name || {};
-      place.name[state.lang] = v;
-      save();
-      render();
-    }),
-    glyph,
-    field(c.address, place.address, (v) => {
-      place.address = v;
-      // A changed address is no longer the address that was confirmed, so the confirmation goes.
-      place.coord = null;
-      place.resolvedName = null;
-      save();
-      scheduleResolve(place, status);
-    }, "span2"),
-    status,
-  );
-
-  const del = document.createElement("button");
-  del.type = "button";
-  del.className = "del span2";
-  del.textContent = c.delete;
-  del.addEventListener("click", () => {
-    if (!confirm(`${c.delete} — ${nameOf(place)}?`)) return;
-    state.places = state.places.filter((p) => p.id !== place.id);
-    save();
-    render();
-    openManage();
-  });
-  li.append(del);
-  return li;
 }
 
 /* ---------- wiring ---------- */
@@ -711,6 +669,57 @@ el.retryLoc.addEventListener("click", () => {
   if (currentPlace) openAnswer(currentPlace);
 });
 el.gear.addEventListener("click", () => { stopRefresh(); openManage(); });
+
+/* ---------- the place overlay: name, icon, address, delete ---------- */
+
+el.placeName.addEventListener("input", () => {
+  if (!editing) return;
+  editing.name = editing.name || {};
+  editing.name[state.lang] = el.placeName.value;
+  el.placeTitle.textContent = el.placeName.value;
+  save();
+  render();
+});
+
+el.placeGlyph.addEventListener("input", () => {
+  if (!editing) return;
+  editing.glyph = el.placeGlyph.value;
+  save();
+  render();
+});
+
+el.placeAddr.addEventListener("input", () => {
+  if (!editing) return;
+  editing.address = el.placeAddr.value;
+  // A changed address is no longer the address that was confirmed.
+  editing.coord = null;
+  editing.resolvedName = null;
+  save();
+  scheduleResolve(editing);
+});
+
+el.placeDel.addEventListener("click", () => {
+  const c = t();
+  if (!editing) return;
+  if (!deleteArmed) {
+    // Arming, not deleting: the danger is a second deliberate tap.
+    deleteArmed = true;
+    el.placeDel.classList.add("confirm");
+    el.placeDel.textContent = c.deleteConfirm;
+    el.placeWarn.hidden = false;
+    el.placeWarn.textContent = c.deleteWarn(nameOf(editing));
+    return;
+  }
+  const gone = editing.id;
+  state.places = state.places.filter((q) => q.id !== gone);
+  save();
+  render();
+  closePlace();
+});
+
+el.placeDone.addEventListener("click", closePlace);
+el.place.addEventListener("click", (e) => { if (e.target === el.place) closePlace(); });
+
 el.closeManage.addEventListener("click", () => show(null));
 
 /* Check for updates: read version.json past any cache and compare with what is running.
@@ -739,24 +748,12 @@ el.verBtn.addEventListener("click", async () => {
 el.sheet.addEventListener("click", (e) => { if (e.target === el.sheet) { show(null); stopRefresh(); } });
 el.manage.addEventListener("click", (e) => { if (e.target === el.manage) show(null); });
 
-el.addBtn.addEventListener("click", () => {
-  const newName = { en: "New place", "zh-Hans": "新地方" };
-  state.places.push({
-    id: `p${Date.now()}`,
-    name: { [state.lang]: newName[state.lang] },
-    glyph: "📍",
-    address: "",
-  });
-  save();
-  render();
-  openManage();
-  const inputs = el.places.querySelectorAll("input");
-  const last = inputs[inputs.length - 3];
-  if (last) last.focus();
-});
-
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && (!el.sheet.hidden || !el.manage.hidden)) { show(null); stopRefresh(); }
+  if (e.key === "Escape" && (!el.sheet.hidden || !el.manage.hidden || !el.place.hidden)) {
+    show(null);
+    stopRefresh();
+    editing = null;
+  }
 });
 
 render();
