@@ -1559,11 +1559,14 @@ function maybeOpenShared() {
   const seq = ++shareLookupSeq;
   reverseAddress(coord.lat, coord.lng).then((hit) => {
     if (seq !== shareLookupSeq || !editing || editing.coord !== coord) return;
-    const name = hit && hit.name ? hit.name : "";
-    if (!name) return;
-    editing.address = name;
-    editing.resolvedName = name;
-    el.placeAddr.value = name;
+    /* The receiver names the place; the app fills the *street* it was sent to (Trix: "they need to enter
+       the new address name themselves. But they can get the street name already pre-generated"). A
+       landmark name is not an address, and the coordinate already says exactly where. */
+    const street = hit && (hit.street || hit.name) ? hit.street || hit.name : "";
+    if (!street) return;
+    editing.address = street;
+    editing.resolvedName = street;
+    el.placeAddr.value = street;
     refreshDone();
   });
 }
@@ -1780,7 +1783,10 @@ async function useMapPoint() {
   }
   mapView.hit = hit;
   editing.coord = { lat: mapView.lat, lng: mapView.lng };
-  const nameOfPoint = hit && hit.name ? hit.name : "";
+  /* The address is the street, not the landmark standing on it (Trix): MarketPlace Leichhardt is what
+     the pin is on, but "Foster Lane, Leichhardt" is the address, and the name the tile carries is the
+     one the person gives it. */
+  const nameOfPoint = hit && (hit.street || hit.name) ? hit.street || hit.name : "";
   if (nameOfPoint) {
     editing.address = nameOfPoint;
     editing.resolvedName = nameOfPoint;
