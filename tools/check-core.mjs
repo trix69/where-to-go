@@ -165,5 +165,47 @@ ok("another site is refused", allowed(req({ origin: "https://example.com" })) ==
 ok("a github.io referer still allowed when Origin is absent",
   allowed(req({ referer: "https://trix69.github.io/where-to-go-test/" })) === true);
 
+
+/* --- where to get on, how far, where to get off (route detail) -------------------------- */
+
+{
+  const stop = (name, extra = {}) => ({ name, disassembledName: name, ...extra });
+  const j = {
+    journeys: [{
+      legs: [
+        { origin: { departureTimePlanned: "2026-10-30T08:50:00Z" }, destination: { arrivalTimePlanned: "2026-10-30T08:53:00Z" } },
+        {
+          transportation: { number: "T1", product: { class: 1, name: "Train" } },
+          origin: {
+            name: "Town Hall Station, Platform 2, Sydney", disassembledName: "Town Hall Station, Platform 2, Sydney",
+            departureTimeEstimated: "2026-10-30T08:53:00Z",
+          },
+          destination: {
+            name: "Parramatta Station, Platform 2, Sydney", disassembledName: "Parramatta Station, Platform 2, Sydney",
+            arrivalTimeEstimated: "2026-10-30T09:22:00Z",
+          },
+          stopSequence: [stop("Town Hall"), stop("Central"), stop("Strathfield"), stop("Lidcombe"), stop("Parramatta")],
+        },
+      ],
+    }],
+  };
+  const t = summarise(j, new Date("2026-10-30T08:46:00Z"));
+  ok("boarding stop, without the mode suffix", t.board === "Town Hall", t.board);
+  ok("platform kept apart from the name", t.boardPlatform === "2", String(t.boardPlatform));
+  ok("alighting stop", t.alight === "Parramatta", t.alight);
+  ok("stops travelled = stopSequence.length - 1", t.stops === 4, String(t.stops));
+}
+
+{
+  // a provider (or the mock) without a stop list must not invent one
+  const j = { journeys: [{ legs: [{
+    transportation: { number: "343", product: { class: 5, name: "Bus" } },
+    origin: { departureTimePlanned: "2026-10-30T08:50:00Z" },
+    destination: { arrivalTimePlanned: "2026-10-30T09:10:00Z" },
+  }] }] };
+  const t = summarise(j, new Date("2026-10-30T08:46:00Z"));
+  ok("no stopSequence → stops is null, not a guess", t.stops === null, String(t.stops));
+}
+
 console.log(failures ? `\n${failures} failed` : "\nall passed");
 process.exit(failures ? 1 : 0);

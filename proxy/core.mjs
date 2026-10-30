@@ -235,6 +235,25 @@ export function summarise(json, now = new Date()) {
 
   const mins = (a, b) => Math.max(0, Math.round((b - a) / 60000));
   const ride = firstRide.transportation || {};
+
+  /* Where to get on, how many stops, where to get off — the three things a person needs at the stop,
+   * and the three the app used to leave out. `stopSequence` is the ride's own stop list, so the count
+   * is its length minus the boarding stop rather than a guess. */
+  const seq = Array.isArray(firstRide.stopSequence) ? firstRide.stopSequence : null;
+
+  /* Stop names arrive with the mode baked in — "Town Hall Light Rail", "Town Hall Station, Platform 2" —
+   * and the sentence already says 轻轨 L2, so the suffix is noise. The platform is kept, separately: on a
+   * train it is the one number that tells you where to stand. */
+  function stopOf(place) {
+    const mode = modeOf(firstRide);
+    let name = String(place?.disassembledName || place?.name || "").replace(/,\s*Sydney$/, "").trim();
+    let platform = "";
+    const m = /,\s*Platform\s+(\S+)$/i.exec(name);
+    if (m) { platform = m[1]; name = name.slice(0, m.index); }
+    if (mode === "lightrail" || mode === "metro") name = name.replace(/\s+(Light Rail|Metro)( Station)?$/i, "");
+    if (mode === "train" || mode === "metro") name = name.replace(/\s+Station$/i, "");
+    return { name: name.trim(), platform };
+  }
   const shortName = ride.disassembledName || ride.number || "";
   return {
     ok: true,
@@ -246,6 +265,11 @@ export function summarise(json, now = new Date()) {
     // "CCN" is a line code, not a line number: for rail the useful words are where it goes.
     // "Richmond via Parramatta" is a timetable heading, not something to read out: keep the terminus.
     towards: String(ride.destination?.name || firstRide.destination?.name || "").split(/\svia\s/i)[0],
+    board: stopOf(firstRide.origin).name,
+    boardPlatform: stopOf(firstRide.origin).platform,
+    alight: stopOf(firstRide.destination).name,
+    alightPlatform: stopOf(firstRide.destination).platform,
+    stops: seq && seq.length > 1 ? seq.length - 1 : null,
     waitMin: mins(now, depart),
     durationMin: mins(start, arrive),   // door to door, from now
     rideMin: mins(depart, arrive),      // on board; waitMin + rideMin is what lands on arriveISO

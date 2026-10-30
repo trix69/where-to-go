@@ -39,12 +39,23 @@ const COPY = {
     regionMsg: "It only works in New South Wales, Australia.",
     storageWarn: "This browser isn't saving changes (private browsing?). Places will be lost when you close the tab.",
     demo: "SAMPLE DATA — no live transit yet",
-    // waitMin + rideMin is the arithmetic that lands on the arrival time printed beside it; the
-    // door-to-door figure includes the wait and made the three numbers disagree (R12.2).
-    trip: (t, arrive) =>
-      `${t.mode in COPY.en.modes ? COPY.en.modes[t.mode] : "Bus"} ${t.line} in ${t.waitMin} min, ` +
-      `${t.rideMin ?? t.durationMin} min on board` +
-      (arrive ? `, arriving ${arrive}.` : "."),
+    // Line, boarding stop, stops, alighting stop, then the timing: the four things a person standing
+    // at a stop needs, and none of them a guess — `stops` is the ride's own stop list.
+    trip: (t, arrive) => {
+      const word = COPY.en.modes[t.mode] || "Bus";
+      const head = `${word} ${t.line}`;
+      const tail = `${t.waitMin} min` + (arrive ? `, arriving ${arrive}.` : ".");
+      if (!t.board || !t.alight || !t.stops) {
+        // Nothing to name (mock, or a provider without a stop list): the old one-line shape.
+        return `${head} in ${t.waitMin} min, ${t.rideMin ?? t.durationMin} min on board` +
+          (arrive ? `, arriving ${arrive}.` : ".");
+      }
+      const change = t.changes > 0 ? ` Change ${t.changes} time${t.changes > 1 ? "s" : ""} on the way.` : "";
+      const at = (stop, platform) => (platform ? `${stop}, platform ${platform}` : stop);
+      return `${head}: board at ${at(t.board, t.boardPlatform)}, ` +
+        `${t.stops} stop${t.stops > 1 ? "s" : ""}, get off at ${at(t.alight, t.alightPlatform)}.` +
+        `${change} Leaving in ${tail}`;
+    },
     modes: { bus: "Bus", train: "Train", ferry: "Ferry", lightrail: "Light rail", metro: "Metro", coach: "Coach" },
     failed: "No answer right now.",
     arrived: "You have arrived.",
@@ -104,15 +115,20 @@ const COPY = {
     // "路" is the bus-route suffix; a train line takes "号线", and ferry/light-rail numbers take neither.
     trip: (t, arrive) => {
       const word = COPY["zh-Hans"].modes[t.mode] || "公交";
-      // A rail "line" is a code (CCN, T9), which says nothing to this audience; where it goes does.
-      const named = !/^\d+[A-Za-z]?$/.test(String(t.line)) && t.towards;
-      const ride = named
-        ? (t.mode === "train" || t.mode === "metro" ? `开往${t.towards}的${word}` : `${word}（开往${t.towards}）`)
-        : t.mode === "train" || t.mode === "metro" ? `${t.line}号线`
-        : t.mode === "bus" || t.mode === "coach" ? `${word}${t.line}路`
-        : `${word}${t.line}`;
-      // 车上 (on board) rather than 路上 (door to door): 等车时间 + 车上时间 = 到站时间 (R12.2).
-      return `坐${ride}，${t.waitMin}分钟后有车，车上大约${t.rideMin ?? t.durationMin}分钟${arrive ? `，${arrive}到` : ""}。`;
+      const line = t.mode === "bus" || t.mode === "coach" ? `${word}${t.line}路` : `${word}${t.line}`;
+      if (!t.board || !t.alight || !t.stops) {
+        // No stop list (mock, or a provider that does not give one): keep the older, vaguer sentence.
+        const named = !/^\d+[A-Za-z]?$/.test(String(t.line)) && t.towards;
+        const ride = named
+          ? (t.mode === "train" || t.mode === "metro" ? `开往${t.towards}的${word}` : `${word}（开往${t.towards}）`)
+          : line;
+        return `坐${ride}，${t.waitMin}分钟后有车，车上大约${t.rideMin ?? t.durationMin}分钟${arrive ? `，${arrive}到` : ""}。`;
+      }
+      const change = t.changes > 0 ? `中途换乘${t.changes}次。` : "";
+      const at = (stop, platform) => (platform ? `${stop} ${platform}号站台` : stop);
+      return `${line}：从${at(t.board, t.boardPlatform)}上车，坐${t.stops}站，` +
+        `到${at(t.alight, t.alightPlatform)}下车。${change}` +
+        `${t.waitMin}分钟后有车${arrive ? `，${arrive}到` : ""}。`;
     },
     modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },
     failed: "现在查不到。",
