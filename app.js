@@ -33,6 +33,12 @@ const COPY = {
     fromHome: "From home",
     fromPlace: (n) => `From ${n}`,
     routeTo: (n) => `Points to: ${n}`,
+    gateChecking: "Checking your location…",
+    gateAllow: "Allow location",
+    gateSkip: "Look around",
+    gateRetry: "Check again",
+    regionTitle: "Not here yet",
+    regionMsg: "This app only works in New South Wales, Australia. It isn't available in your region yet.",
     chooseOrigin: "Where are you starting from?",
     storageWarn: "This browser isn't saving changes (private browsing?). Places will be lost when you close the tab.",
     demo: "SAMPLE DATA — no live transit yet",
@@ -76,6 +82,12 @@ const COPY = {
     fromHome: "从家出发",
     fromPlace: (n) => `从${n}出发`,
     routeTo: (n) => `定位到：${n}`,
+    gateChecking: "正在确认位置…",
+    gateAllow: "允许定位",
+    gateSkip: "先看看",
+    gateRetry: "重新定位",
+    regionTitle: "本地区还没开通",
+    regionMsg: "这个应用目前只在澳大利亚新南威尔士州（NSW）可以使用，您所在的地区还没有开通。",
     chooseOrigin: "从哪里出发？",
     storageWarn: "当前浏览器无法保存（无痕浏览？）。关闭后这些地点会丢失。",
     demo: "示例数据 — 还没接实时公交",
@@ -191,6 +203,11 @@ const nameOf = (place) => (place.name && (place.name[state.lang] || place.name.e
 const $ = (id) => document.getElementById(id);
 const el = {
   ask: $("ask"),
+  gate: $("gate"),
+  gateTitle: $("gateTitle"),
+  gateMsg: $("gateMsg"),
+  gateAllow: $("gateAllow"),
+  gateSkip: $("gateSkip"),
   gear: $("settingsBtn"),
   tiles: $("tiles"),
   sheet: $("sheet"),
@@ -257,6 +274,29 @@ function show(which) {
   document.body.style.overflow = which ? "hidden" : "";
 }
 
+/* ---------- region gate ----------
+ * TfNSW only covers New South Wales, so the app is not useful outside it. The provider's own API
+ * cannot answer "am I in NSW?" — its coord endpoint returns points in Melbourne and Brisbane too —
+ * so the test is geographic. This is a coarse outline of the state: accurate at city scale, and it
+ * deliberately accepts the ACT, which sits inside NSW and shares part of the network.
+ */
+const NSW = [
+  [141.0, -29.0], [148.0, -29.0], [149.0, -28.7], [150.5, -28.5], [152.0, -28.3],
+  [153.0, -28.2], [153.6, -28.3], [153.6, -30.0], [152.5, -32.5], [151.5, -34.0],
+  [150.2, -36.0], [149.9, -37.5], [148.0, -36.5], [146.0, -36.0], [144.0, -35.5],
+  [142.0, -34.6], [141.0, -34.0],
+];
+
+function inNSW({ lat, lng }) {
+  let inside = false;
+  for (let i = 0, j = NSW.length - 1; i < NSW.length; j = i++) {
+    const [xi, yi] = NSW[i];
+    const [xj, yj] = NSW[j];
+    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 /* ---------- the answer ---------- */
 
 let lookSeq = 0;
@@ -269,8 +309,9 @@ let location = null; // {coord} once granted; never cache a failure, so "Use my 
  * wrong assumption for someone already out, and produced "add a starting place" on the Home tile —
  * an error about a place when the missing thing was permission.
  */
-function askLocation() {
-  if (location && location.coord) return Promise.resolve(location);
+function askLocation(opts = {}) {
+  const maxAge = opts.maxAge == null ? 60000 : opts.maxAge;
+  if (location && location.coord && maxAge > 0) return Promise.resolve(location);
   if (!navigator.geolocation) return Promise.resolve({ error: "unavailable" });
   return new Promise((resolve) => {
     let settled = false;
@@ -288,7 +329,7 @@ function askLocation() {
     navigator.geolocation.getCurrentPosition(
       (pos) => finish({ coord: { lng: pos.coords.longitude, lat: pos.coords.latitude } }),
       (err) => finish({ error: err && err.code === 1 ? "denied" : err && err.code === 3 ? "timeout" : "unavailable" }),
-      { timeout: 10000, maximumAge: 60000, enableHighAccuracy: false },
+      { timeout: 10000, maximumAge: maxAge, enableHighAccuracy: false },
     );
   });
 }
@@ -394,7 +435,7 @@ async function openAnswer(place, forcedOrigin = null, opts = {}) {
       // Still usable without permission: pick the place you are standing in.
       renderOriginChoices(place);
     } else {
-      el.summary.textContent = c.looking;
+      if (!refresh) el.summary.textContent = c.looking;
       const trip = await getTrip(place, { origin });
       if (seq !== lookSeq) return;
       mode = trip.mode;
@@ -670,5 +711,84 @@ el.addBtn.addEventListener("click", () => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && (!el.sheet.hidden || !el.manage.hidden)) { show(null); stopRefresh(); }
 });
+
+render();
+
+/* ---------- startup: ask for location, then decide whether this region is served ---------- */
+
+function closeGate() {
+  el.gate.hidden = true;
+}
+
+let gateMode = "check";
+
+function regionBlocked(c) {
+  gateMode = "region";
+  el.gateTitle.textContent = c.regionTitle;
+  el.gateMsg.textContent = c.regionMsg;
+  el.gateAllow.hidden = true;
+  // Not an escape hatch: the app cannot answer outside NSW. Offer a re-check instead, in case the
+  // fix was wrong (a cached location, a VPN, a device that reported somewhere else).
+  el.gateSkip.textContent = c.gateRetry;
+  el.gateSkip.hidden = false;
+}
+
+function gateNeedsGesture(c) {
+  gateMode = "check";
+  el.gateTitle.textContent = c.ask;
+  el.gateMsg.textContent = c.locationOff;
+  el.gateAllow.textContent = c.gateAllow;
+  el.gateAllow.hidden = false;
+  el.gateSkip.textContent = c.gateSkip;
+  el.gateSkip.hidden = false;
+}
+
+async function boot() {
+  const c = t();
+  el.gateTitle.textContent = c.ask;
+  el.gateMsg.textContent = c.gateChecking;
+
+  // A site-level refusal cannot be re-prompted, and it is not a reason to block the app: the
+  // traveller may still want the Maps hand-off.
+  let state0 = "prompt";
+  try {
+    state0 = (await navigator.permissions.query({ name: "geolocation" })).state;
+  } catch { /* the query is not implemented everywhere */ }
+  if (state0 === "denied") return closeGate();
+
+  const loc = await askLocation({ maxAge: 0 });
+  if (loc.coord) {
+    location = loc;
+    if (inNSW(loc.coord)) return closeGate();
+    return regionBlocked(c);
+  }
+  // Nothing came back: the prompt needs a real gesture on some browsers, so offer one.
+  gateNeedsGesture(c);
+}
+
+el.gateAllow.addEventListener("click", async () => {
+  const c = t();
+  el.gateMsg.textContent = c.gateChecking;
+  el.gateAllow.hidden = true;
+  el.gateSkip.hidden = true;
+  const loc = await askLocation({ maxAge: 0 });
+  if (loc.coord) {
+    location = loc;
+    if (inNSW(loc.coord)) return closeGate();
+    return regionBlocked(c);
+  }
+  gateNeedsGesture(c);
+});
+
+el.gateSkip.addEventListener("click", () => {
+  if (gateMode === "region") {
+    location = null;              // forget the cached fix and ask again
+    boot();
+    return;
+  }
+  closeGate();
+});
+
+boot();
 
 render();
