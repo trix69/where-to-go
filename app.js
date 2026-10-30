@@ -963,9 +963,10 @@ el.placeDone.addEventListener("click", () => {
 
 el.glyphEdit.addEventListener("click", () => { if (editing) openIcons(); });
 
-/* X: close without saving. An existing place goes back to the snapshot taken when the sheet opened;
-   a draft was never written, so it simply goes away. */
-el.placeClose.addEventListener("click", () => {
+/* Close without saving. X, an outside tap and Escape all do the same thing: an existing place goes
+   back to the snapshot taken when the sheet opened, and a draft — never written anywhere — just goes
+   away. 完成 is the only path that keeps what was typed. */
+function cancelPlace() {
   if (!editing) return;
   if (!editingIsNew && snapshot) {
     const was = JSON.parse(snapshot);
@@ -979,12 +980,20 @@ el.placeClose.addEventListener("click", () => {
     render();
   }
   closePlace();
-});
+}
+
+el.placeClose.addEventListener("click", cancelPlace);
+
+/* Tapping the dimmed area outside the sheet closes it, the same way X does (Trix). The icon chooser
+   sits above this sheet, so a tap meant for it never reaches here. */
+el.place.addEventListener("click", (e) => { if (e.target === el.place) cancelPlace(); });
 
 /* The chooser is not a form: a tap picks, an outside tap or Escape just closes it. */
 el.icons.addEventListener("click", (e) => { if (e.target === el.icons) closeIcons(); });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !el.icons.hidden) { e.stopPropagation(); closeIcons(); }
+  if (e.key !== "Escape") return;
+  if (!el.icons.hidden) { e.stopPropagation(); closeIcons(); return; }
+  if (!el.place.hidden) { e.stopPropagation(); cancelPlace(); }
 }, true);
 
 el.placeDel.addEventListener("click", () => {
