@@ -874,9 +874,22 @@ html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
 /* The name row leaves the X its corner, and carries a pencil at its own right edge. The pencil is
    pointer-events:none so a tap on it lands in the input underneath. */
 .namerow { position: relative; margin: 0 0 12px; }
-.namerow .title-input { width: 100%; margin: 0; }
-/* The pencil that used to sit at the end of the name field is gone: the field is an input with a caret,
-   and the pencil stacked directly under the share button in the corner and read as part of it. */
+.namerow .title-input { width: 100%; margin: 0; padding-right: 40px; }
+/* The pencil sits immediately after the name, so a short name carries it close and a long one pushes it
+   right — Trix: "Depends on how long the text is, the position will be dynamic". JS sets `left` from the
+   measured text width; the underline stays the full width of the row either way. */
+.name-edit {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  color: var(--ink-soft);
+  pointer-events: none;
+  transition: left 90ms ease-out;
+}
+.name-edit svg { display: block; width: 100%; height: 100%; }
 
 /* ---------- the map ----------
  * Full height, not a bottom sheet: the pin sits at the middle of whatever height it is given, and the

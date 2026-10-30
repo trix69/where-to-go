@@ -616,6 +616,7 @@ const el = {
   place: $("place"),
   placeTitle: $("placeTitle"),
   placeName: $("placeName"),
+  namePencil: $("namePencil"),
   icons: $("icons"),
   placeIcons: $("placeIcons"),
   glyphView: $("glyphView"),
@@ -1016,6 +1017,7 @@ const SIZES = ["sm", "md", "lg", "xl"];
 
 function applySize() {
   document.documentElement.dataset.size = SIZES.includes(state.fontSize) ? state.fontSize : "md";
+  placeNamePencil();                 // the name is set larger or smaller, and the pencil follows it
 }
 
 /* ---------- add to the home screen ----------
@@ -1232,6 +1234,7 @@ function openPlace(place, opts = {}) {
   renderIcons();
   refreshDone();
   show("place");
+  placeNamePencil();
 
   /* Two states where the sheet has to explain itself:
    * - no provider (mock/sample): nothing can be saved, and the field would refuse every keystroke
@@ -1833,6 +1836,24 @@ el.installDone.addEventListener("click", () => openManage());
 
 /* ---------- the place overlay: name, icon, address, delete ---------- */
 
+/* The pencil sits immediately after the name, wherever that ends: "Depends on how long the text is, the
+ * position will be dynamic" (Trix). The width comes from a canvas measure with the input's own computed
+ * font, so it is right at every size setting and in both languages; when the name is empty the pencil
+ * sits at the start of the field, where the caret is. */
+var pencilCtx = null;   // hoisted: applySize() can call this before the line above runs
+function placeNamePencil() {
+  if (!editing || el.place.hidden || !el.namePencil) return;
+  const input = el.placeName;
+  const cs = getComputedStyle(input);
+  if (!pencilCtx) pencilCtx = document.createElement("canvas").getContext("2d");
+  pencilCtx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const text = input.value || "";
+  const padLeft = parseFloat(cs.paddingLeft) || 0;
+  const room = Math.max(0, input.clientWidth - 40 - 24);     // never let it run past the field
+  const width = text ? Math.min(pencilCtx.measureText(text).width, room) : 0;
+  el.namePencil.style.left = `${Math.round(padLeft + width + (text ? 9 : 5))}px`;
+}
+
 el.placeName.addEventListener("input", () => {
   if (!editing) return;
   editing.name = editing.name || {};
@@ -1841,6 +1862,7 @@ el.placeName.addEventListener("input", () => {
   const clash = duplicateNameOf(el.placeName.value, editing.id);
   el.placeNote.hidden = !clash;
   el.placeNote.textContent = clash ? t().dupName(norm(el.placeName.value)) : "";
+  placeNamePencil();
   refreshDone();
   if (!editingIsNew && !clash) { save(); render(); }
 });
@@ -1898,6 +1920,8 @@ function cancelPlace() {
   }
   closePlace();
 }
+
+window.addEventListener("resize", () => { if (!el.place.hidden) placeNamePencil(); });
 
 el.placeClose.addEventListener("click", cancelPlace);
 
