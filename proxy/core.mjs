@@ -167,6 +167,7 @@ export function summarise(json, now = new Date()) {
     line: shortName.length <= 8 ? shortName : ride.number || shortName,
     waitMin: mins(now, depart),
     durationMin: mins(start, arrive),
+    arriveISO: arrive.toISOString(),
     walkToStopMin: mins(start, depart) > 0 ? mins(start, depart) : 0,
     departISO: depart.toISOString(),
     realtime: Boolean(firstRide.origin?.departureTimeEstimated),

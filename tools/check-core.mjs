@@ -76,6 +76,7 @@ ok("footpath leg is not mistaken for a ride", t.mode === "bus", t.mode);
 ok("wait measured to the real-time departure (8 min)", t.waitMin === 8, String(t.waitMin));
 ok("duration is door to door, walk included (30 min)", t.durationMin === 30, String(t.durationMin));
 ok("real-time flag set from departureTimeEstimated", t.realtime === true);
+ok("arrival instant is returned for the clock line", t.arriveISO === "2026-10-29T21:30:00.000Z", String(t.arriveISO));
 ok("changes counts non-walk legs minus one", t.changes === 0, String(t.changes));
 
 const train = {
