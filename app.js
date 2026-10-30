@@ -621,7 +621,7 @@ const el = {
   mapTilesLayer: $("mapTiles"),
   mapAddr: $("mapAddr"),
   mapUse: $("mapUse"),
-  mapBack: $("mapBack"),
+  mapCancel: $("mapCancel"),
   mapIn: $("mapIn"),
   mapOut: $("mapOut"),
   editPlace: $("editPlace"),
@@ -1452,6 +1452,8 @@ function mapTileUrl(z, x, y) {
 }
 const mapTileCache = new Map();
 let mapDrag = null;
+const mapPointers = new Map();        // every finger on the map, for pinch
+let mapPinch = null;
 let mapReverseTimer = null;
 let mapReverseSeq = 0;
 
@@ -1469,18 +1471,29 @@ function toLatLng(x, y, z) {
   return { lat: (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))), lng: (x / size) * 360 - 180 };
 }
 
-/** Paints the tiles that cover the viewport and parks the layer so the viewport centre is the pin. */
-function renderMap() {
+/**
+ * Paints the tiles that cover the viewport.
+ *
+ * Everything is placed in viewport-local pixels. The obvious alternative — one world-space origin with a
+ * transform that pulls the whole world under the pin — is what broke the first build: at z17 the world is
+ * 33 554 432 px wide, and Chromium clamps layout offsets and composited transforms at 2^24, so every tile
+ * landed on the same pixel and the map painted as an empty grey rectangle. Local numbers never exceed the
+ * viewport, so there is nothing to clamp.
+ */
+function mapOrigin() {
   const rect = el.mapWrap.getBoundingClientRect();
-  if (!rect.width || !rect.height) return;
   const centre = toWorld(mapView.lat, mapView.lng, mapView.z);
-  const left = centre.x - rect.width / 2;
-  const top = centre.y - rect.height / 2;
-  el.mapTilesLayer.style.transform = `translate3d(${-left}px, ${-top}px, 0)`;
+  return { left: centre.x - rect.width / 2, top: centre.y - rect.height / 2, w: rect.width, h: rect.height };
+}
+
+function renderMap() {
+  const { left, top, w, h } = mapOrigin();
+  if (!w || !h) return;
+  el.mapTilesLayer.style.transform = "";          // local coordinates: no world-sized offsets anywhere
 
   const count = 2 ** mapView.z;
-  const x0 = Math.floor(left / MAP_TILE) - 1, x1 = Math.floor((left + rect.width) / MAP_TILE) + 1;
-  const y0 = Math.floor(top / MAP_TILE) - 1, y1 = Math.floor((top + rect.height) / MAP_TILE) + 1;
+  const x0 = Math.floor(left / MAP_TILE) - 1, x1 = Math.floor((left + w) / MAP_TILE) + 1;
+  const y0 = Math.floor(top / MAP_TILE) - 1, y1 = Math.floor((top + h) / MAP_TILE) + 1;
   const wanted = new Set();
   for (let x = x0; x <= x1; x++) {
     for (let y = y0; y <= y1; y++) {
@@ -1495,10 +1508,10 @@ function renderMap() {
         img.decoding = "async";
         img.draggable = false;
         img.src = mapTileUrl(mapView.z, x, y);
-        img.style.left = `${x * MAP_TILE}px`;
-        img.style.top = `${y * MAP_TILE}px`;
         mapTileCache.set(key, img);
       }
+      img.style.left = `${Math.round(x * MAP_TILE - left)}px`;
+      img.style.top = `${Math.round(y * MAP_TILE - top)}px`;
       if (!img.isConnected) el.mapTilesLayer.append(img);
     }
   }
@@ -1529,6 +1542,8 @@ function scheduleReverse() {
 function stopMap() {
   clearTimeout(mapReverseTimer);
   mapReverseSeq++;
+  mapPointers.clear();
+  mapPinch = null;
   if (mapDrag) {
     try { el.mapWrap.releasePointerCapture(mapDrag.id); } catch { /* already gone */ }
     mapDrag = null;
@@ -1537,9 +1552,8 @@ function stopMap() {
 }
 
 function mapSettle(dx, dy) {
-  const rect = el.mapWrap.getBoundingClientRect();
-  const centre = toWorld(mapView.lat, mapView.lng, mapView.z);
-  const moved = toLatLng(centre.x - dx, centre.y - dy, mapView.z);
+  const { left, top, w, h } = mapOrigin();
+  const moved = toLatLng(left + w / 2 - dx, top + h / 2 - dy, mapView.z);
   mapView.lat = Math.min(Math.max(moved.lat, -85), 85);
   mapView.lng = ((moved.lng + 540) % 360) - 180;
   if (Math.abs(dx) + Math.abs(dy) > 4) mapView.moved = true;
@@ -1553,7 +1567,7 @@ async function openMap(place) {
   el.mapHint.textContent = c.mapHint;
   el.mapWrap.setAttribute("aria-label", c.mapTitle);
   el.mapUse.textContent = c.mapUse;
-  el.mapBack.textContent = c.mapBack;
+  el.mapCancel.textContent = c.mapCancel;
   el.mapIn.setAttribute("aria-label", c.zoomIn);
   el.mapOut.setAttribute("aria-label", c.zoomOut);
   mapView.z = 17;
@@ -1586,10 +1600,22 @@ async function openMap(place) {
 }
 
 /** Takes the centre of the screen as the answer, and says what it is in the address field. */
-function useMapPoint() {
+async function useMapPoint() {
   if (!editing) { show("place"); return; }
+  /* A person can aim and tap faster than the 450 ms debounce plus a lookup. Waiting briefly is better
+     than saving a pin with no label when the answer was already on its way — but never long enough to
+     feel stuck, and the coordinate is the answer either way. */
+  let hit = mapView.hit;
+  if (!hit) {
+    hit = await Promise.race([
+      reverseAddress(mapView.lat, mapView.lng),
+      new Promise((resolve) => setTimeout(() => resolve(null), 1200)),
+    ]);
+    if (el.map.hidden) return;                 // they left while it was in flight
+  }
+  mapView.hit = hit;
   editing.coord = { lat: mapView.lat, lng: mapView.lng };
-  const nameOfPoint = mapView.hit && mapView.hit.name ? mapView.hit.name : "";
+  const nameOfPoint = hit && hit.name ? hit.name : "";
   if (nameOfPoint) {
     editing.address = nameOfPoint;
     editing.resolvedName = nameOfPoint;
@@ -1739,26 +1765,79 @@ el.editPlace.addEventListener("click", () => {
 
 el.placeMap.addEventListener("click", () => { if (editing) openMap(editing); });
 el.mapUse.addEventListener("click", useMapPoint);
-el.mapBack.addEventListener("click", () => show("place"));
+el.mapCancel.addEventListener("click", () => show("place"));
 
 /* One finger moves the map; the layer is transformed in the handler so the picture never lags the
  * finger, and the centre is only recomputed on release. */
 el.mapWrap.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 && e.pointerType === "mouse") return;
-  mapDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
+  mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   try { el.mapWrap.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
   el.mapWrap.classList.add("grabbing");
+
+  if (mapPointers.size >= 2) {
+    /* Two fingers: the pinch takes over from the pan. Trix asked for it, and it is the one gesture the
+       rest of the phone's maps already taught everybody. */
+    const [a, b] = [...mapPointers.values()];
+    mapDrag = null;
+    mapPinch = { startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+                 scale: 1, z0: mapView.z };
+    el.mapTilesLayer.style.transformOrigin = "center";
+    return;
+  }
+  mapDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
 });
 el.mapWrap.addEventListener("pointermove", (e) => {
+  if (mapPointers.has(e.pointerId)) mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (mapPinch && mapPointers.size >= 2) {
+    const [a, b] = [...mapPointers.values()];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    mapPinch.scale = dist / mapPinch.startDist;
+    // About the middle of the gesture, so the street under the fingers stays under the fingers.
+    const rect = el.mapWrap.getBoundingClientRect();
+    el.mapTilesLayer.style.transformOrigin =
+      `${mapPinch.mid.x - rect.left}px ${mapPinch.mid.y - rect.top}px`;
+    el.mapTilesLayer.style.transform = `scale(${mapPinch.scale})`;
+    return;
+  }
+
   if (!mapDrag || e.pointerId !== mapDrag.id) return;
   mapDrag.dx = e.clientX - mapDrag.x;
   mapDrag.dy = e.clientY - mapDrag.y;
-  const rect = el.mapWrap.getBoundingClientRect();
-  const centre = toWorld(mapView.lat, mapView.lng, mapView.z);
-  el.mapTilesLayer.style.transform =
-    `translate3d(${-(centre.x - rect.width / 2 - mapDrag.dx)}px, ${-(centre.y - rect.height / 2 - mapDrag.dy)}px, 0)`;
+  // Only the delta: the tiles are already placed in viewport pixels, so this stays a small number.
+  el.mapTilesLayer.style.transform = `translate3d(${mapDrag.dx}px, ${mapDrag.dy}px, 0)`;
 });
 function endMapDrag(e) {
+  if (e) mapPointers.delete(e.pointerId);
+
+  if (mapPinch) {
+    // One finger left: finish the pinch. The zoom snaps to a tile level, and the point that was under
+    // the fingers stays under them.
+    if (mapPointers.size >= 2) return;
+    const { scale, mid, z0 } = mapPinch;
+    mapPinch = null;
+    el.mapTilesLayer.style.transform = "";
+    el.mapTilesLayer.style.transformOrigin = "";
+    const steps = Math.log2(scale || 1);
+    const target = Math.min(Math.max(z0 + Math.round(steps), MAP_MIN_Z), MAP_MAX_Z);
+    if (target !== mapView.z) {
+      const rect = el.mapWrap.getBoundingClientRect();
+      const fx = mid.x - rect.left, fy = mid.y - rect.top;
+      const origin = mapOrigin();
+      const focal = toLatLng(origin.left + fx, origin.top + fy, mapView.z);
+      mapView.z = target;
+      const world = toWorld(focal.lat, focal.lng, mapView.z);
+      const centre = toLatLng(world.x - fx + rect.width / 2, world.y - fy + rect.height / 2, mapView.z);
+      mapView.lat = centre.lat;
+      mapView.lng = centre.lng;
+    }
+    el.mapWrap.classList.remove("grabbing");
+    renderMap();
+    scheduleReverse();
+    return;
+  }
+
   if (!mapDrag || (e && e.pointerId !== mapDrag.id)) return;
   const { dx, dy, id } = mapDrag;
   mapDrag = null;
