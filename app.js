@@ -123,17 +123,31 @@ const LANGS = [
   { id: "en", label: "English" },
 ];
 
+/* Presets ship with a name and an icon only. Addresses are left empty on purpose: the app cannot know
+ * where a family's doctor, school or market actually is, and a plausible-looking wrong address is worse
+ * than an empty one. The helper fills them in, and each one is geocoded and confirmed there. */
 const SEED = [
-  { id: "home", name: { en: "Home", "zh-Hans": "家" }, glyph: "🏠", address: "12 Crown Street, Sydney NSW 2000" },
-  { id: "doctor", name: { en: "Family doctor", "zh-Hans": "家庭医生" }, glyph: "🧑‍⚕️", address: "Royal Prince Alfred Hospital, Missenden Road, Camperdown NSW 2050" },
-  { id: "market", name: { en: "Market", "zh-Hans": "市场" }, glyph: "🛒", address: "Paddy's Markets, 9-13 Hay Street, Haymarket NSW 2000" },
-  { id: "daughter", name: { en: "Daughter's", "zh-Hans": "女儿家" }, glyph: "👨‍👩‍👧", address: "8 Belmore Road, Randwick NSW 2031" },
-  { id: "school", name: { en: "School", "zh-Hans": "学校" }, glyph: "🏫", address: "Randwick Public School, Cowper Street, Randwick NSW 2031" },
-  { id: "park", name: { en: "Park", "zh-Hans": "公园" }, glyph: "🌳", address: "Centennial Park, Sydney NSW 2021" },
+  { id: "home", name: { en: "Home", "zh-Hans": "家" }, glyph: "🏠", address: "" },
+  { id: "doctor", name: { en: "Family doctor", "zh-Hans": "家庭医生" }, glyph: "🧑‍⚕️", address: "" },
+  { id: "market", name: { en: "Market", "zh-Hans": "市场" }, glyph: "🛒", address: "" },
+  { id: "daughter", name: { en: "Daughter's", "zh-Hans": "女儿家" }, glyph: "👨‍👩‍👧", address: "" },
+  { id: "school", name: { en: "School", "zh-Hans": "学校" }, glyph: "🏫", address: "" },
+  { id: "park", name: { en: "Park", "zh-Hans": "公园" }, glyph: "🌳", address: "" },
 ];
 
+/* What the presets used to ship with. Used only to clear an untouched address when the presets move
+ * to "empty until someone fills it in" — a place the helper has set or geocoded is never touched. */
+const SEED_ADDRESSES = {
+  home: "12 Crown Street, Sydney NSW 2000",
+  doctor: "Royal Prince Alfred Hospital, Missenden Road, Camperdown NSW 2050",
+  market: "Paddy's Markets, 9-13 Hay Street, Haymarket NSW 2000",
+  daughter: "8 Belmore Road, Randwick NSW 2031",
+  school: "Randwick Public School, Cowper Street, Randwick NSW 2031",
+  park: "Centennial Park, Sydney NSW 2021",
+};
+
 // Bumped when a preset is added, so an existing set of places picks it up without a wipe.
-const SEED_VERSION = 3;
+const SEED_VERSION = 5;
 
 /** Add presets introduced since this browser's places were saved, keeping tile order. */
 /* Presets that were renamed after they shipped. Only a preset nobody touched is rewritten: the old
@@ -142,7 +156,9 @@ const RENAMED = [
   {
     id: "doctor",
     was: { glyph: "🏥", names: ["医生", "醫生", "Doctor"] },
-    now: { name: { en: "Family doctor", "zh-Hans": "家庭医生" }, glyph: "🧑‍⚕️" },
+    now: { name: { en: "Family doctor", "zh-Hans": "家庭医生" }, glyph: "🧑‍⚕️", address: "" },
+    // the address that shipped with the hospital preset; only an untouched one is cleared
+    wasAddress: "Royal Prince Alfred Hospital, Missenden Road, Camperdown NSW 2050",
   },
 ];
 
@@ -154,6 +170,11 @@ function renamePresets(stored) {
     if (!names.some((n) => r.was.names.includes(n))) continue;
     place.name = { ...place.name, ...r.now.name };
     place.glyph = r.now.glyph;
+    if (r.wasAddress !== undefined && (place.address || "") === r.wasAddress) {
+      place.address = "";
+      place.coord = null;
+      place.resolvedName = null;
+    }
   }
 }
 
@@ -163,6 +184,10 @@ function ensureDefaults(stored) {
   const have = new Set(stored.places.map((p) => p.id));
   for (const p of SEED) if (!have.has(p.id)) stored.places.push({ ...p });
   // Presets keep their declared order; anything the helper added stays after them.
+  for (const p of stored.places) {
+    if (p.coord) continue;                                    // already confirmed or geocoded
+    if (SEED_ADDRESSES[p.id] && (p.address || "") === SEED_ADDRESSES[p.id]) p.address = "";
+  }
   const rank = new Map(SEED.map((p, i) => [p.id, i]));
   stored.places.sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : SEED.length) - (rank.has(b.id) ? rank.get(b.id) : SEED.length));
   stored.seedVersion = SEED_VERSION;
