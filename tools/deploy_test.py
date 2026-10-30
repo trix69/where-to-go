@@ -14,8 +14,10 @@ The test copy differs from the live one in these ways only:
 - its own manifest identity, so it installs beside the live app instead of replacing it;
 - its own storage key (whereToGo-test.v1), so trying the test site in the same browser does not
   rewrite the real saved places;
-- the version reads "<VERSION>-test" and every ?v= stamp is a fingerprint of the app files, so each
-  new test build is fetched fresh instead of served from Pages' 10-minute cache.
+- the version reads "<VERSION>-test" while `dev` is exactly the shipped commit, and "<next>-test" once
+  `dev` has moved past it (so a post-1.0 test build says 1.1-test, not 1.0-test), and every ?v= stamp
+  is a fingerprint of the app files, so each new test build is fetched fresh instead of served from
+  Pages' 10-minute cache.
 Everything else — config.js, proxy URL, code — is identical, so the test site exercises the same
 transit proxy the live one uses.
 """
@@ -48,6 +50,26 @@ def must(text, old, new, what):
     return text.replace(old, new)
 
 
+def shown_version():
+    """The number the test site carries.
+
+    The rule (Trix, 2026-10-30): the version row must not claim to be the build that is live. While
+    `dev` sits exactly on the shipped tag, the test build *is* that version and says `<VERSION>-test`;
+    the moment `dev` moves past it, the test site is a candidate for the next version and says
+    `<next>-test`. Derived from git rather than typed, so it cannot drift.
+    """
+    v = version.found()["VERSION"]
+
+    def head_of(rev):
+        r = subprocess.run(["git", "rev-parse", "--short", rev], cwd=ROOT, text=True, capture_output=True)
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    shipped = head_of(f"v{v}")
+    if shipped is None:          # nothing shipped yet: the test site carries the version in VERSION
+        return v
+    return v if head_of("HEAD") == shipped else version.bumped(v)
+
+
 def build(out):
     # R6.5: a test build carrying a localhost proxy fails for every visitor, silently, and the only
     # symptom is "no answer right now". Refuse instead of shipping it.
@@ -62,8 +84,7 @@ def build(out):
             shutil.rmtree(out / d)
         shutil.copytree(ROOT / d, out / d)
 
-    live = version.found()["VERSION"]
-    shown = f"{live}-test"
+    shown = f"{shown_version()}-test"
     stamp = hashlib.sha1(b"".join((ROOT / f).read_bytes() for f in FILES)).hexdigest()[:10]
 
     manifest = (ROOT / "manifest.webmanifest").read_text(encoding="utf-8")

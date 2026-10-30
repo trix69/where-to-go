@@ -7,8 +7,9 @@ Usage:
   python3 tools/version.py set 0.1   set an exact version
 
 The rules, same shape as typing-zen and Violin Toolkit:
-- The app starts at 0.1. **Only a ship to live bumps the version**; test builds and work on `dev` do
-  not. The test site shows the same number with "-test" (0.1-test).
+- **Only a ship to live bumps the version**; test builds and work on `dev` do not. The test site shows
+  VERSION with "-test" while `dev` is the shipped commit, and the next version with "-test" once `dev`
+  has moved past it (tools/deploy_test.py derives this) — so a post-1.0 test build reads 1.1-test.
 - Every file the page loads carries ?v=<version> so a new release is fetched past GitHub Pages'
   10-minute cache instead of being served from it.
 """
