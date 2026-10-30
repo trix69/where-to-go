@@ -47,7 +47,7 @@ const COPY = {
     modes: { bus: "Bus", train: "Train", ferry: "Ferry", lightrail: "Light rail", metro: "Metro", coach: "Coach" },
     failed: "No answer right now.",
     arrived: "You have arrived.",
-    dupAddress: (n) => `That address is already used by "${n}".`,
+    dupName: (n) => `There is already a place called "${n}".`,
     stillGo: "Open in Maps anyway",
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
@@ -113,7 +113,7 @@ const COPY = {
     modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },
     failed: "现在查不到。",
     arrived: "您已经到了。",
-    dupAddress: (n) => `这个地址已经用在「${n}」上了。`,
+    dupName: (n) => `已经有叫「${n}」的地点了。`,
     stillGo: "还是打开地图",
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
@@ -637,23 +637,24 @@ function stopRefresh() {
  */
 
 let editing = null;       // the place currently in the overlay
+let editingIsNew = false; // a draft that is not in state.places yet, so it cannot be deleted either
 let deleteArmed = false;  // first tap arms the delete, second confirms it
 let resolveTimer = null;
 
 function closePlace() {
-  editing = null;
+  editing = null;          // a draft is simply dropped: it was never in state.places
+  editingIsNew = false;
   deleteArmed = false;
   show(null);
 }
 
 function openPlace(place) {
   const c = t();
+  editingIsNew = !place;
   if (!place) {
-    // A new tile: created only when someone asks for one, then edited straight away.
+    // A draft. Nothing is added to the tiles, and nothing is written to storage, until 完成 — closing
+    // the overlay any other way throws it away (Trix).
     place = { id: `p${Date.now()}`, name: { [state.lang]: c.newPlace }, glyph: "📍", address: "" };
-    state.places.push(place);
-    save();
-    render();
   }
   editing = place;
   deleteArmed = false;
@@ -665,6 +666,7 @@ function openPlace(place) {
   el.placeAddr.value = place.address || "";
   el.placeDel.textContent = c.delete;
   el.placeDel.classList.remove("confirm");
+  el.placeDel.hidden = false;             // on a draft it discards, which is the only way out besides 完成
   el.placeWarn.hidden = true;
   el.placeNote.hidden = true;
   el.placeDone.textContent = c.done;
@@ -704,8 +706,7 @@ function renderIcons() {
       b.addEventListener("click", () => {
         if (!editing) return;
         editing.glyph = g;
-        save();
-        render();
+        if (!editingIsNew) { save(); render(); }
         renderIcons();
       });
       return b;
@@ -738,25 +739,21 @@ function renderEmpty() {
 
 const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
 
-/** The other place already using this address, if there is one. Icons are not unique; addresses are. */
-function duplicateOf(address, exceptId) {
-  const key = norm(address);
+/** The other place already using this name. Names are unique; addresses and icons are not: two people
+ *  can live at one address, and two destinations can share a glyph (Trix). */
+function duplicateNameOf(name, exceptId) {
+  const key = norm(name);
   if (!key) return null;
-  return state.places.find((p) => p.id !== exceptId && (norm(p.address) === key || norm(p.resolvedName) === key)) || null;
+  return state.places.find((p) => {
+    if (p.id === exceptId) return false;
+    const names = p.name ? Object.values(p.name) : [];
+    return names.some((n) => norm(n) === key);
+  }) || null;
 }
 
 function pick(index) {
   const hit = results[index];
   if (!hit || !editing) return;
-  const clash = duplicateOf(hit.name, editing.id);
-  if (clash) {
-    // One address, one place: two tiles to the same door is how a family ends up with a stale copy.
-    closeList();
-    el.placeNote.hidden = false;
-    el.placeNote.textContent = t().dupAddress(nameOf(clash));
-    refreshDone();
-    return;
-  }
   const typed = el.placeAddr.value.trim();
   const { suspicious, away } = suspectMatch(typed || hit.name, hit);
   editing.address = hit.name;
@@ -769,8 +766,7 @@ function pick(index) {
   // the helper can see the name they picked and fix it if it is wrong.
   el.placeNote.hidden = !suspicious;
   el.placeNote.textContent = suspicious ? t().checkMatch(hit.name, away) : "";
-  save();
-  render();
+  if (!editingIsNew) { save(); render(); }
   refreshDone();
 }
 
@@ -802,10 +798,13 @@ function refreshDone() {
 
 function canSave() {
   if (!editing) return false;
+  // A tile needs a name, and no two tiles may share one.
+  const name = (el.placeName.value || "").trim();
+  if (!name || duplicateNameOf(name, editing.id)) return false;
   const typed = el.placeAddr.value.trim();
   if (!typed) return true;                                  // no address is a valid, honest state
   if (!editing.coord || typed !== (editing.address || "").trim()) return false;
-  return !duplicateOf(editing.address, editing.id);
+  return true;
 }
 
 function scheduleSearch() {
@@ -894,8 +893,11 @@ el.placeName.addEventListener("input", () => {
   editing.name = editing.name || {};
   editing.name[state.lang] = el.placeName.value;
   el.placeTitle.textContent = el.placeName.value;
-  save();
-  render();
+  const clash = duplicateNameOf(el.placeName.value, editing.id);
+  el.placeNote.hidden = !clash;
+  el.placeNote.textContent = clash ? t().dupName(norm(el.placeName.value)) : "";
+  refreshDone();
+  if (!editingIsNew && !clash) { save(); render(); }
 });
 
 el.placeAddr.addEventListener("input", () => {
@@ -922,12 +924,23 @@ document.addEventListener("click", (e) => {
 
 el.placeDone.addEventListener("click", () => {
   if (!canSave()) return;          // guarded in the button, and again here
+  if (editingIsNew && editing) {
+    state.places.push(editing);
+    editingIsNew = false;
+    save();
+    render();
+  }
   closePlace();
 });
 
 el.placeDel.addEventListener("click", () => {
   const c = t();
   if (!editing) return;
+  if (editingIsNew) {
+    // Nothing was written, so there is nothing to warn about: dropping the draft loses nothing.
+    closePlace();
+    return;
+  }
   if (!deleteArmed) {
     // Arming, not deleting: the danger is a second deliberate tap.
     deleteArmed = true;
@@ -949,7 +962,8 @@ el.editPlace.addEventListener("click", () => {
 });
 
 
-el.place.addEventListener("click", (e) => { if (e.target === el.place) closePlace(); });
+// No outside-tap close: the place overlay has an address being set up in it, and a stray tap that
+// throws that away is worse than a screen with one extra step (Trix: "until user delete or done").
 
 el.closeManage.addEventListener("click", () => show(null));
 
@@ -980,10 +994,10 @@ el.sheet.addEventListener("click", (e) => { if (e.target === el.sheet) { show(nu
 el.manage.addEventListener("click", (e) => { if (e.target === el.manage) show(null); });
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && (!el.sheet.hidden || !el.manage.hidden || !el.place.hidden)) {
+  // The place overlay is deliberately not in this list: only 删除 or 完成 leaves it.
+  if (e.key === "Escape" && (!el.sheet.hidden || !el.manage.hidden)) {
     show(null);
     stopRefresh();
-    editing = null;
   }
 });
 

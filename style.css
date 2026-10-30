@@ -566,3 +566,8 @@ body {
 
 /* A save that is not allowed has to look like it. */
 .go[disabled] { opacity: 0.45; pointer-events: none; }
+
+/* Settings is a dialog, not a bottom sheet (Trix): it is a short list of choices and belongs in the
+   middle of the screen, where the eye already is. */
+#manage { align-items: center; padding: 24px; }
+#manage .panel { border-radius: 20px; }
