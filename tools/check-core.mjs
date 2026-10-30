@@ -253,5 +253,36 @@ ok("a github.io referer still allowed when Origin is absent",
   ok("Sydney Buses Network is a bus", mode(5, "Sydney Buses Network") === "bus", mode(5, "Sydney Buses Network"));
 }
 
+
+/* --- every vehicle is returned, so a changed journey can be described (R31.1) ------------- */
+
+{
+  const ride = (cls, name, number, o, d, from, to, stops) => ({
+    transportation: { number, product: { class: cls, name } },
+    origin: { name: from, departureTimeEstimated: o },
+    destination: { name: to, arrivalTimeEstimated: d },
+    stopSequence: Array.from({ length: stops + 1 }, (_, i) => ({ name: "s" + i })),
+  });
+  const j = { journeys: [{ legs: [
+    { transportation: { product: { class: 100, name: "footpath" } },
+      origin: { name: "Door", departureTimeEstimated: "2026-10-30T08:00:00Z" },
+      destination: { name: "Randwick", arrivalTimeEstimated: "2026-10-30T08:04:00Z" } },
+    ride(4, "Sydney Light Rail Network", "L2", "2026-10-30T08:05:00Z", "2026-10-30T08:20:00Z", "Randwick", "Central Chalmers Street", 6),
+    { transportation: { product: { class: 100, name: "footpath" } },
+      origin: { name: "Central Chalmers Street", departureTimeEstimated: "2026-10-30T08:20:00Z" },
+      destination: { name: "Central", arrivalTimeEstimated: "2026-10-30T08:25:00Z" } },
+    ride(1, "Sydney Trains Network", "T1", "2026-10-30T08:30:00Z", "2026-10-30T09:10:00Z", "Central", "Parramatta", 15),
+    { transportation: { product: { class: 100, name: "footpath" } },
+      origin: { name: "Parramatta", departureTimeEstimated: "2026-10-30T09:10:00Z" },
+      destination: { name: "Door", arrivalTimeEstimated: "2026-10-30T09:22:00Z" } },
+  ] }] };
+  const t = summarise(j, new Date("2026-10-30T07:55:00Z"));
+  ok("both rides are returned", Array.isArray(t.rides) && t.rides.length === 2, String(t.rides?.length));
+  ok("second ride keeps its own line and stop", t.rides?.[1]?.line === "T1" && t.rides?.[1]?.alight === "Parramatta",
+    JSON.stringify(t.rides?.[1]));
+  ok("changes counts the vehicles, not the legs", t.changes === 1, String(t.changes));
+  ok("the first ride still drives the headline fields", t.line === "L2" && t.mode === "lightrail", `${t.line}/${t.mode}`);
+}
+
 console.log(failures ? `\n${failures} failed` : "\nall passed");
 process.exit(failures ? 1 : 0);

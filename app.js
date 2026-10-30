@@ -66,6 +66,16 @@ const COPY = {
       const change = t.changes > 0
         ? ` Change ${t.changes} time${t.changes > 1 ? "s" : ""} on the way${doorAt ? `, arriving ${doorAt}` : ""}.`
         : "";
+      if (Array.isArray(t.rides) && t.rides.length > 1) {
+        const chain = `Change ${t.rides.length - 1} time${t.rides.length > 2 ? "s" : ""}: ` +
+          t.rides.map((r, i) => `${i === 0 ? "first" : i === t.rides.length - 1 ? "then" : "next"} ` +
+            `${(COPY.en.modes[r.mode] || "bus").toLowerCase()} ${r.line} to ${r.alight}`).join(", ") + ".";
+        const chainDoor = arrive ? clockAfter(t.departISO, t.arriveISO) : "";
+        const arrival = chainDoor
+          ? (t.walkFromStopMin > 0 ? `${t.walkFromStopMin} min walk, ${chainDoor} at the door.` : `${chainDoor} at the door.`)
+          : "";
+        return [service, chain, arrival].filter(Boolean).join("\n");
+      }
       const tail2 = t.changes > 0
         ? stopAt ? `${stopAt} at the stop.` : ""
         : t.walkFromStopMin > 0 && stopAt && doorAt
@@ -193,6 +203,28 @@ const COPY = {
       const doorAt = arrive && clock(t.arriveISO) !== stopRaw
         ? clockAfter(t.alightISO || t.departISO, t.arriveISO)
         : "";
+      /* A journey with a change names every vehicle (Trix): 换乘1次：先坐…，再坐…。 The walk and the
+       * door clock follow on their own line, because they belong to the last vehicle. */
+      if (Array.isArray(t.rides) && t.rides.length > 1) {
+        const label = (mode, line) => {
+          const word = COPY["zh-Hans"].modes[mode] || "公交";
+          return mode === "bus" || mode === "coach" ? `${word}${line}路` : `${word}${line}`;
+        };
+        const chain = `换乘${t.rides.length - 1}次：` + t.rides.map((r, i) => {
+          const verb = i === 0 ? "先坐"
+            : i === t.rides.length - 1 ? (t.rides.length > 2 ? "最后坐" : "再坐")
+              : "然后坐";
+          return `${verb}${label(r.mode, r.line)}到${r.alight}`;
+        }).join("，") + "。";
+        // No stop clock is printed in a chain card, so the door clock is dated against the service
+        // clock it follows — otherwise a 23:43 departure and a 00:47 arrival sit unmarked.
+        const chainDoor = arrive ? clockAfter(t.departISO, t.arriveISO) : "";
+        const arrival = chainDoor
+          ? (t.walkFromStopMin > 0 ? `再走${t.walkFromStopMin}分钟，${chainDoor}到。` : `${chainDoor}到。`)
+          : "";
+        return [service, chain, arrival].filter(Boolean).join("\n");
+      }
+
       const walkLine = doorAt && t.changes === 0 && t.walkFromStopMin > 0
         ? `再走${t.walkFromStopMin}分钟，${doorAt}到。`
         : "";

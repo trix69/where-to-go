@@ -250,8 +250,8 @@ export function summarise(json, now = new Date()) {
   /* Stop names arrive with the mode baked in — "Town Hall Light Rail", "Town Hall Station, Platform 2" —
    * and the sentence already says 轻轨 L2, so the suffix is noise. The platform is kept, separately: on a
    * train it is the one number that tells you where to stand. */
-  function stopOf(place) {
-    const mode = modeOf(firstRide);
+  function stopOf(place, leg = firstRide) {
+    const mode = modeOf(leg);
     let name = String(place?.disassembledName || place?.name || "").replace(/,\s*Sydney$/, "").trim();
     let platform = "";
     const m = /,\s*Platform\s+(\S+)$/i.exec(name);
@@ -260,6 +260,24 @@ export function summarise(json, now = new Date()) {
     if (mode === "train" || mode === "metro") name = name.replace(/\s+Station$/i, "");
     return { name: name.trim(), platform };
   }
+  /* Every vehicle, not just the first: a journey with a change used to name one bus and then print a
+   * door clock forty minutes later (R31.1). The card now says 换乘1次：先坐…，再坐…。 */
+  const rides = legs.filter((l) => !isWalk(l)).map((l) => {
+    const t = l.transportation || {};
+    const short = t.disassembledName || t.number || "";
+    const n = Array.isArray(l.stopSequence) ? l.stopSequence.length - 1 : null;
+    return {
+      mode: modeOf(l),
+      line: short.length <= 8 ? short : t.number || short,
+      towards: String(t.destination?.name || l.destination?.name || "").split(/\svia\s/i)[0],
+      board: stopOf(l.origin, l).name,
+      alight: stopOf(l.destination, l).name,
+      stops: n && n > 0 ? n : null,
+      departISO: when(l.origin?.departureTimeEstimated || l.origin?.departureTimePlanned)?.toISOString(),
+      arriveISO: when(l.destination?.arrivalTimeEstimated || l.destination?.arrivalTimePlanned)?.toISOString(),
+    };
+  });
+
   const shortName = ride.disassembledName || ride.number || "";
   return {
     ok: true,
@@ -290,7 +308,8 @@ export function summarise(json, now = new Date()) {
     walkFromStopMin: isWalk(legs[legs.length - 1]) ? mins(when(legs[legs.length - 1].origin?.departureTimeEstimated || legs[legs.length - 1].origin?.departureTimePlanned), arrive) : 0,
     departISO: depart.toISOString(),
     realtime: Boolean(firstRide.origin?.departureTimeEstimated),
-    changes: legs.filter((l) => !isWalk(l)).length - 1,
+    changes: rides.length - 1,
+    rides,
   };
 }
 
