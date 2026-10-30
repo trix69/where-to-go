@@ -350,6 +350,7 @@ const el = {
   placeIcons: $("placeIcons"),
   glyphView: $("glyphView"),
   glyphEdit: $("glyphEdit"),
+  placeClose: $("placeClose"),
   nameLabel: $("nameLabel"),
   addrLabel: $("addrLabel"),
   placeAddr: $("placeAddr"),
@@ -640,6 +641,7 @@ function stopRefresh() {
  */
 
 let editing = null;       // the place currently in the overlay
+let snapshot = null;      // what this place looked like when the overlay opened
 let editingIsNew = false; // a draft that is not in state.places yet, so it cannot be deleted either
 let deleteArmed = false;  // first tap arms the delete, second confirms it
 let resolveTimer = null;
@@ -647,6 +649,7 @@ let resolveTimer = null;
 function closePlace() {
   closeIcons();
   editing = null;          // a draft is simply dropped: it was never in state.places
+  snapshot = null;
   editingIsNew = false;
   deleteArmed = false;
   show(null);
@@ -661,6 +664,10 @@ function openPlace(place) {
     place = { id: `p${Date.now()}`, name: { [state.lang]: c.newPlace }, glyph: "📍", address: "" };
   }
   editing = place;
+  // Taken before anything is typed, so X can put the place back exactly as it was. Existing places
+  // save as you type; without this, "close without saving" would be a lie.
+  snapshot = JSON.stringify({ name: place.name, glyph: place.glyph, address: place.address,
+                              coord: place.coord, resolvedName: place.resolvedName, suspect: place.suspect });
   deleteArmed = false;
   el.placeTitle.textContent = nameOf(place);
   el.nameLabel.textContent = c.name;
@@ -884,8 +891,12 @@ function kmApart(a, b) {
 function suspectMatch(address, hit) {
   const typed = new Set(words(address));
   const shared = words(hit.name).some((w) => typed.has(w));
+  // The suburb test only applies to a full address, the kind that names a suburb to begin with:
+  // "Paddy's Markets" is a place, not an address that forgot its suburb, and flagging it taught the
+  // helper to ignore the amber line.
+  const looksFull = /,|\bnsw\b/i.test(String(address));
   const locality = words(hit.locality || "");
-  const localityOk = locality.length === 0 || locality.some((w) => typed.has(w));
+  const localityOk = !looksFull || locality.length === 0 || locality.some((w) => typed.has(w));
   const away = Math.round(kmApart(hit.coord, SYDNEY));
   return { suspicious: !shared || !localityOk || away > 60, away: away > 60 ? away : 0 };
 }
@@ -951,6 +962,24 @@ el.placeDone.addEventListener("click", () => {
 });
 
 el.glyphEdit.addEventListener("click", () => { if (editing) openIcons(); });
+
+/* X: close without saving. An existing place goes back to the snapshot taken when the sheet opened;
+   a draft was never written, so it simply goes away. */
+el.placeClose.addEventListener("click", () => {
+  if (!editing) return;
+  if (!editingIsNew && snapshot) {
+    const was = JSON.parse(snapshot);
+    // Every field the sheet can touch, restored or removed — a key the place did not have before must
+    // not survive the cancel (suspect, for instance).
+    for (const k of ["name", "glyph", "address", "coord", "resolvedName", "suspect"]) {
+      if (k in was) editing[k] = was[k];
+      else delete editing[k];
+    }
+    save();
+    render();
+  }
+  closePlace();
+});
 
 /* The chooser is not a form: a tap picks, an outside tap or Escape just closes it. */
 el.icons.addEventListener("click", (e) => { if (e.target === el.icons) closeIcons(); });

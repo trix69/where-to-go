@@ -653,3 +653,22 @@ body {
 #icons { align-items: center; padding: 24px; z-index: 12; }   /* above the place sheet it opened from */
 #icons .panel { width: min(360px, 100%); border-radius: 20px; }
 #icons .icons { margin: 0; }
+
+/* Close without saving: one X, top right, and the sheet's contents revert to what they were. */
+#place .panel { position: relative; }
+.sheet-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 56px;
+  height: 56px;
+  padding: 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.sheet-close svg { width: 100%; height: 100%; }
+.sheet-close:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+#place .title-input { padding-right: 64px; }
