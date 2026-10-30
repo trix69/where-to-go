@@ -124,6 +124,7 @@ const COPY = {
     upToDate: "Up to date",
     updating: (v) => `Updating to ${v}…`,
     cantCheck: "Can't check here",
+    reloading: "Reloading…",
     offline: "No internet — can't check",
     addHome: "Add to home screen",
     device: "Phone",
@@ -294,6 +295,7 @@ const COPY = {
     upToDate: "已是最新版本",
     updating: (v) => `正在更新到 ${v}…`,
     cantCheck: "这里查不到",
+    reloading: "正在重新加载…",
     offline: "没有网络，无法检查",
     addHome: "添加到主屏幕",
     device: "手机",
@@ -786,7 +788,7 @@ function inNSW({ lat, lng }) {
 
 let lookSeq = 0;
 let currentPlace = null;
-let location = null; // {coord, at} once granted; never cache a failure, so "Use my location" can retry
+let myLocation = null; // {coord, at} once granted; never cache a failure, so "Use my location" can retry
 
 /**
  * Ask the device where it is. A failure is a state to report, not a reason to invent an origin:
@@ -829,7 +831,7 @@ async function askLocation(opts = {}) {
   const maxAge = opts.maxAge == null ? 60000 : opts.maxAge;
   // The stamp is the point: without it a launch-time fix was reused for the whole page session, so a
   // trip asked 4 km away was still computed from where the phone was when the app opened (R16.1).
-  if (location && location.coord && maxAge > 0 && Date.now() - (location.at || 0) < maxAge) return location;
+  if (myLocation && myLocation.coord && maxAge > 0 && Date.now() - (myLocation.at || 0) < maxAge) return myLocation;
   if (!navigator.geolocation) return { error: "unavailable" };
 
   let res = await askOnce(maxAge);
@@ -1401,7 +1403,7 @@ el.closeSheet.addEventListener("click", () => { show(null); stopRefresh(); });
  * a real gesture, which this is, so a person who just turned location back on in Settings gets a new
  * chance without reloading the app. */
 el.retryLoc.addEventListener("click", () => {
-  location = null;
+  myLocation = null;
   if (currentPlace) openAnswer(currentPlace);
 });
 el.gear.addEventListener("click", () => { stopRefresh(); openManage(); });
@@ -1532,21 +1534,42 @@ el.closeManage.addEventListener("click", () => show(null));
 el.verBtn.addEventListener("click", async () => {
   const c = t();
   el.verMsg.textContent = c.checking;
-  try {
-    const res = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(String(res.status));
-    const live = await res.json();
-    const mine = el.appVersion;
-    const same = mine.dataset.build ? live.build === mine.dataset.build : live.version === mine.textContent;
-    if (same) {
-      el.verMsg.textContent = c.upToDate;
+  const mine = el.appVersion;
+  const stamp = String(Date.now());
+
+  /* Two attempts, because the cache-busted URL is the one that can be refused: an iOS web clip that has
+     been open for days answers the plain file and not the ?t= variant (Trix, 2026-10-31: 这里查不到 while
+     the site was serving 1.2 to curl and to every fresh visitor). */
+  let live = null;
+  for (const url of [`version.json?t=${stamp}`, "version.json"]) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) continue;
+      live = await res.json();
+      break;
+    } catch { /* the next attempt is the fallback, not a rethrow */ }
+  }
+
+  if (!live) {
+    if (navigator.onLine === false) {
+      el.verMsg.textContent = c.offline;
       return;
     }
-    el.verMsg.textContent = c.updating(live.version);
-    location.replace(`${location.pathname}?v=${encodeURIComponent(live.build || live.version)}`);
-  } catch {
-    el.verMsg.textContent = navigator.onLine === false ? c.offline : c.cantCheck;
+    /* There is no service worker here, so a fresh navigation *is* the update. A check that cannot read
+       the file reloads rather than dead-ending: 这里查不到 left Trix with no way forward from the home
+       screen — one failed request and the app could never learn it was two versions behind. */
+    el.verMsg.textContent = c.reloading;
+    window.location.replace(`${window.location.pathname}?v=${stamp}`);
+    return;
   }
+
+  const same = mine.dataset.build ? live.build === mine.dataset.build : live.version === mine.textContent;
+  if (same) {
+    el.verMsg.textContent = c.upToDate;
+    return;
+  }
+  el.verMsg.textContent = c.updating(live.version);
+  window.location.replace(`${window.location.pathname}?v=${encodeURIComponent(live.build || live.version)}`);
 });
 
 el.sheet.addEventListener("click", (e) => { if (e.target === el.sheet) { show(null); stopRefresh(); } });
@@ -1626,7 +1649,7 @@ async function boot() {
   el.gateMsg.textContent = c.gateChecking;
   const loc = await askLocation({ maxAge: 0 });
   if (loc.coord) {
-    location = { coord: loc.coord, at: Date.now() };
+    myLocation = { coord: loc.coord, at: Date.now() };
     if (inNSW(loc.coord)) {
       setRegionVerdict("in");
       return closeGate();
@@ -1646,7 +1669,7 @@ el.gateAllow.addEventListener("click", async () => {
   el.gateSkip.hidden = true;
   const loc = await askLocation({ maxAge: 0 });
   if (loc.coord) {
-    location = { coord: loc.coord, at: Date.now() };
+    myLocation = { coord: loc.coord, at: Date.now() };
     if (inNSW(loc.coord)) {
       setRegionVerdict("in");
       return closeGate();
@@ -1660,7 +1683,7 @@ el.gateAllow.addEventListener("click", async () => {
 el.gateSkip.addEventListener("click", () => {
   if (gateMode === "region") {
     // 重新定位: forget both the cached fix and the verdict, then check again.
-    location = null;
+    myLocation = null;
     setRegionVerdict("");
     boot();
     return;
