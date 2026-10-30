@@ -140,17 +140,28 @@ const COPY = {
        * Stand is already in its name), how long, and the clock time it leaves (Trix). */
       const platform = /^\d+[A-Za-z]?$/.test(String(t.boardPlatform || "")) ? `${t.boardPlatform}号站台` : "";
       const departs = t.departISO ? clock(t.departISO) : "";
-      const service = [`${line}${way}`, platform, `${t.waitMin}分钟后到`, departs ? `${departs}开` : ""]
-        .filter(Boolean).join(" · ");
-      // Two clocks, because they are two different events: the vehicle reaching the stop you get off at,
-      // then the walk, then the address. With a change the walk belongs to a later vehicle, so only the
-      // first clock is shown.
+      /* Three short lines, one idea each (Trix's draft, tightened):
+       *   1. the service you are waiting for
+       *   2. the ride — board, stops, and the clock time it reaches the stop you leave at
+       *   3. the walk to the door, with the one arrival time that matters
+       * The draft repeated itself: "22:23到站" and "预计到达时间22:32" are the stop and the door, and
+       * "8分钟后到站，22:22发车" was one departure described twice. */
+      const verb = ["bus", "coach", "lightrail", "metro"].includes(t.mode) ? "到站" : "发车";
+      const service = [`${line}${way}`, platform,
+        `${t.waitMin}分钟后${verb}${departs ? `（${departs}）` : ""}`].filter(Boolean).join(" · ");
+
       const stopAt = t.alightISO ? clock(t.alightISO) : "";
-      const doorAt = arrive ? `步行${t.walkFromStopMin}分钟后 ${arrive} 抵达` : "";
-      const tail2 = t.changes === 0 && t.walkFromStopMin > 0 && stopAt
-        ? `${stopAt}到站。${doorAt}`
-        : `${stopAt ? `${stopAt}到站。` : ""}${arrive ? `${arrive}抵达。` : ""}`;
-      return `${service}\n从${t.board}上车，坐${t.stops}站，到${t.alight}下车。${change}${tail2}`;
+      // 在…下车 is the natural word order; 到X下车 reads like a typo to a Chinese reader.
+      const ride = `从${t.board}上车，坐${t.stops}站，` +
+        (stopAt ? `${stopAt}在${t.alight}下车。` : `在${t.alight}下车。`);
+
+      const walkLine = arrive && t.changes === 0 && t.walkFromStopMin > 0
+        ? `再走${t.walkFromStopMin}分钟，${arrive}到。`
+        : "";
+      // No walk to describe: the arrival belongs on the ride line, so it is not left unsaid.
+      const rideWithArrival = walkLine || !arrive ? ride : `${ride.replace(/。$/, "")}，${arrive}到。`;
+
+      return [service, rideWithArrival + change, walkLine].filter(Boolean).join("\n");
     },
     modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },
     failed: "现在查不到。",
