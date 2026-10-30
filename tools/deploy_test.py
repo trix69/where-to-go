@@ -67,7 +67,12 @@ def shown_version():
     shipped = head_of(f"v{v}")
     if shipped is None:          # nothing shipped yet: the test site carries the version in VERSION
         return v
-    return v if head_of("HEAD") == shipped else version.bumped(v)
+    if head_of("HEAD") == shipped:
+        return v
+    # Tree, not just the commit: a revert can put the working tree back on the shipped bytes while the
+    # history moves on, and then a "1.2-test" label promises a build that differs from live (R49.1).
+    same_tree = subprocess.run(["git", "diff", "--quiet", f"v{v}", "HEAD"], cwd=ROOT).returncode == 0
+    return v if same_tree else version.bumped(v)
 
 
 def build(out):
