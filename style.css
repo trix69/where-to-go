@@ -882,21 +882,17 @@ html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
 
 /* Tiles live on a zero-sized origin and are positioned in world pixels; the layer is then translated so
  * the centre of the viewport is the pin. Nothing here is read back during a drag. */
-.map-tiles {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  will-change: transform;
-  filter: saturate(0.92);       /* the pin must be the only saturated thing on the screen */
-}
+/* No filter here: this element is 0x0 on purpose (children are positioned in world pixels), and a filter
+   makes its paint region that same 0x0 — every tile vanished into a grey rectangle. The wash goes on the
+   tiles instead. */
+.map-tiles { position: absolute; top: 0; left: 0; width: 0; height: 0; will-change: transform; }
 .map-tile {
   position: absolute;
   width: 256px;
   height: 256px;
   pointer-events: none;
   -webkit-user-drag: none;
+  filter: saturate(0.92);       /* calmer streets; the pin must be the only saturated thing on the map */
 }
 
 /* The pin's tip, not its body, is the coordinate: translate by its own height. */
