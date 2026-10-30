@@ -77,8 +77,25 @@ export async function searchAddresses(text) {
  * @returns {Promise<{ok: true, provider: string, mode: string, line: string|number,
  *                    waitMin: number, durationMin: number, realtime: boolean, changes: number}>}
  */
+function metresBetween(a, b) {
+  const R = 6371000, rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/* Closer than this and there is no journey to describe: you are there. Also the threshold below which
+ * asking the provider wastes a call to be told "walk-only". */
+const ARRIVED_METRES = 200;
+
 export async function getTrip(place, opts = {}) {
   if (!place || (!place.address && !place.coord)) throw new Error("no-address");
+  const origin0 = opts.origin || {};
+  if (place.coord && origin0.coord && Number.isFinite(place.coord.lat) && Number.isFinite(origin0.coord.lat)) {
+    if (metresBetween(origin0.coord, place.coord) < ARRIVED_METRES) {
+      return { ok: true, arrived: true, provider: "nearby", mode: "walk", line: "", waitMin: 0, rideMin: 0, durationMin: 0 };
+    }
+  }
   if (usingMock()) return mockTrip(place);
 
   const q = new URLSearchParams();

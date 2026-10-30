@@ -46,6 +46,8 @@ const COPY = {
       (arrive ? `, arriving ${arrive}.` : "."),
     modes: { bus: "Bus", train: "Train", ferry: "Ferry", lightrail: "Light rail", metro: "Metro", coach: "Coach" },
     failed: "No answer right now.",
+    arrived: "You have arrived.",
+    dupAddress: (n) => `That address is already used by "${n}".`,
     stillGo: "Open in Maps anyway",
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
@@ -110,6 +112,8 @@ const COPY = {
     },
     modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },
     failed: "现在查不到。",
+    arrived: "您已经到了。",
+    dupAddress: (n) => `这个地址已经用在「${n}」上了。`,
     stillGo: "还是打开地图",
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
@@ -276,9 +280,10 @@ const t = () => COPY[state.lang] || COPY[DEFAULT_LANG];
 /* ---------- light / dark / automatic ---------- */
 
 const THEMES = [
-  { id: "auto", label: () => t().themeAuto },
+  // Order is Trix's: light, dark, then automatic — which is still what a new install gets.
   { id: "light", label: () => t().themeLight },
   { id: "dark", label: () => t().themeDark },
+  { id: "auto", label: () => t().themeAuto },
 ];
 
 function applyTheme() {
@@ -541,9 +546,10 @@ async function openAnswer(place, opts = {}) {
       const trip = await getTrip(place, { origin });
       if (seq !== lookSeq) return;
       mode = trip.mode;
-      el.summary.textContent = c.trip(trip, clock(trip.arriveISO));
+      // Standing at the destination is not a failed lookup: there is no bus to name.
+      el.summary.textContent = trip.arrived ? c.arrived : c.trip(trip, clock(trip.arriveISO));
       // Anything that is not the live provider gets said out loud, in the answer card.
-      if (trip.provider !== "tfnsw") {
+      if (trip.provider !== "tfnsw" && trip.provider !== "nearby") {
         el.stamp.textContent = c.demo;
         el.stamp.dataset.kind = "demo";
         el.stamp.hidden = false;
@@ -553,7 +559,11 @@ async function openAnswer(place, opts = {}) {
     if (seq !== lookSeq) return;
     // No answer is still a decision the user can act on — unless there is no destination at all.
     const why = err && err.message;
-    el.summary.textContent = why === "no-address" ? c.needAddress : why === "no-origin" ? c.noOrigin : c.failed;
+    // The provider says "walk-only" when the only way there is to walk: that is an arrival, not an error.
+    el.summary.textContent = why === "walk-only" ? c.arrived
+      : why === "no-address" ? c.needAddress
+      : why === "no-origin" ? c.noOrigin
+      : c.failed;
     el.go.textContent = c.stillGo;
     el.go.hidden = !(place.address || place.coord);
   }
@@ -726,9 +736,27 @@ function renderEmpty() {
   showRow(p);
 }
 
+const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+/** The other place already using this address, if there is one. Icons are not unique; addresses are. */
+function duplicateOf(address, exceptId) {
+  const key = norm(address);
+  if (!key) return null;
+  return state.places.find((p) => p.id !== exceptId && (norm(p.address) === key || norm(p.resolvedName) === key)) || null;
+}
+
 function pick(index) {
   const hit = results[index];
   if (!hit || !editing) return;
+  const clash = duplicateOf(hit.name, editing.id);
+  if (clash) {
+    // One address, one place: two tiles to the same door is how a family ends up with a stale copy.
+    closeList();
+    el.placeNote.hidden = false;
+    el.placeNote.textContent = t().dupAddress(nameOf(clash));
+    refreshDone();
+    return;
+  }
   const typed = el.placeAddr.value.trim();
   const { suspicious, away } = suspectMatch(typed || hit.name, hit);
   editing.address = hit.name;
@@ -776,7 +804,8 @@ function canSave() {
   if (!editing) return false;
   const typed = el.placeAddr.value.trim();
   if (!typed) return true;                                  // no address is a valid, honest state
-  return Boolean(editing.coord) && typed === (editing.address || "").trim();
+  if (!editing.coord || typed !== (editing.address || "").trim()) return false;
+  return !duplicateOf(editing.address, editing.id);
 }
 
 function scheduleSearch() {
