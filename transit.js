@@ -74,11 +74,39 @@ export async function searchAddresses(text) {
 /**
  * What is at this point — the label under the map pin.
  *
- * Null is a valid answer and is not an error: the pin still works, because a confirmed place travels on
- * its coordinate. Nothing is invented to fill the line.
+ * Trix, after pinning Leichhardt Marketplace and getting "Flood Street, Leichhardt": a street name is
+ * not where he pointed. Two sources are asked at once, because each knows something the other does not:
+ *
+ * - Photon names the *thing* — a mall, a shop, a park — which is what a person recognises. It is called
+ *   from the browser because Cloudflare's egress gets nothing back from it;
+ * - Nominatim (through our proxy) gives the clean street address, "12 Norton Street, Leichhardt".
+ *
+ * The name wins when there is one; the street becomes the second line under the pin and the fallback
+ * when the point is only a road. Nothing is invented: no name and no street returns null, and the pin
+ * still works, because a confirmed place travels on its coordinate.
  */
-export async function reverseAddress(lat, lng) {
-  if (usingMock() || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+const POI_KEYS = new Set(["shop", "amenity", "leisure", "tourism", "building", "office", "craft", "man_made", "historic", "healthcare"]);
+
+async function photonPlace(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1&lang=en`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5000) },
+    );
+    const body = await res.json().catch(() => null);
+    const props = body && Array.isArray(body.features) && body.features[0] ? body.features[0].properties : null;
+    if (!props || !props.name) return null;
+    const key = String(props.osm_key || "").toLowerCase();
+    // A street or a bare address is not a name; the proxy already describes those better.
+    if (!POI_KEYS.has(key)) return null;
+    return { name: String(props.name), suburb: String(props.district || props.city || props.locality || "") };
+  } catch {
+    return null;
+  }
+}
+
+async function nominatimAddress(lat, lng) {
+  if (usingMock()) return null;
   try {
     const res = await fetch(`${CONFIG.proxyBase}/reverse?coord=${lng},${lat}`, {
       headers: { accept: "application/json" },
@@ -90,6 +118,22 @@ export async function reverseAddress(lat, lng) {
   } catch {
     return null;
   }
+}
+
+export async function reverseAddress(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const [poi, street] = await Promise.all([photonPlace(lat, lng), nominatimAddress(lat, lng)]);
+  const suburb = (street && street.locality) || (poi && poi.suburb) || "";
+
+  if (poi && poi.name) {
+    // "MarketPlace Leichhardt", not "MarketPlace Leichhardt, Leichhardt".
+    const name = suburb && !poi.name.toLowerCase().includes(suburb.toLowerCase())
+      ? `${poi.name}, ${suburb}`
+      : poi.name;
+    return { name, poi: poi.name, street: (street && street.name) || "", locality: suburb };
+  }
+  if (street && street.name) return { name: street.name, poi: "", street: street.name, locality: suburb };
+  return null;
 }
 
 /**

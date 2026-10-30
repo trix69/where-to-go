@@ -937,11 +937,15 @@ html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
 .map-addr {
   margin: 0;
   flex: 0 0 auto;
-  min-height: 1.6em;
+  min-height: 2.9em;               /* two lines reserve their space, so the buttons never jump */
   font-size: max(1.1rem, 18px);
-  line-height: 1.35;
+  line-height: 1.3;
   color: var(--ink);
+  display: flex;
+  flex-direction: column;
 }
+.map-poi { font-weight: 650; }
+.map-street { color: var(--ink-soft); font-size: 0.9em; }
 
 /* The way into the map, in the place editor. Bordered, not filled: 完成 is still the one filled button. */
 .mapbtn {

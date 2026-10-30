@@ -1525,7 +1525,29 @@ function renderMap() {
   }
 }
 
-/** The address under the pin, asked for the centre of the screen — the same point the trip will use. */
+/**
+ * What is under the pin, in the order a person thinks: the place's name first (MarketPlace Leichhardt),
+ * the street beneath it (Flood Street, Leichhardt) — the name is what gets stored, the street is the
+ * receipt. With no name there is one line; with nothing there it says so.
+ */
+function renderMapAddr(hit) {
+  el.mapAddr.replaceChildren();
+  if (!hit) { el.mapAddr.textContent = t().mapNoAddress; return; }
+  if (hit.poi) {
+    const title = document.createElement("span");
+    title.className = "map-poi";
+    title.textContent = hit.poi;
+    el.mapAddr.append(title);
+  }
+  if (hit.street && hit.street !== hit.poi) {
+    const street = document.createElement("span");
+    street.className = "map-street";
+    street.textContent = hit.street;
+    el.mapAddr.append(street);
+  }
+}
+
+/** Asks for the centre of the screen — the same point the trip will use. */
 function scheduleReverse() {
   const c = t();
   clearTimeout(mapReverseTimer);
@@ -1536,7 +1558,7 @@ function scheduleReverse() {
     const hit = await reverseAddress(mapView.lat, mapView.lng);
     if (seq !== mapReverseSeq || el.map.hidden) return;
     mapView.hit = hit;
-    el.mapAddr.textContent = hit && hit.name ? hit.name : c.mapNoAddress;
+    renderMapAddr(hit);
   }, 450);
 }
 
