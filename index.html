@@ -70,6 +70,14 @@
     </div>
   </section>
 
+  <!-- The icon chooser: opened from the pencil beside the symbol, closes when one is picked. -->
+  <section class="sheet picker" id="icons" hidden aria-labelledby="iconLabel">
+    <div class="panel">
+      <p class="sr-only" id="iconLabel">Icon</p>
+      <div class="icons" id="placeIcons" role="group" aria-labelledby="iconLabel"></div>
+    </div>
+  </section>
+
   <!-- One place, opened from its pencil. Has the delete, and the delete asks twice. -->
   <section class="sheet" id="place" hidden aria-labelledby="placeTitle">
     <div class="panel">
@@ -77,8 +85,12 @@
       <label class="sr-only" id="nameLabel" for="placeName">Name</label>
       <input id="placeName" class="title-input" type="text" autocomplete="off">
 
-      <p class="sr-only" id="iconLabel">Icon</p>
-      <div class="icons" id="placeIcons" role="group" aria-labelledby="iconLabel"></div>
+      <div class="glyphrow">
+        <span class="glyph" id="glyphView" aria-hidden="true"></span>
+        <button class="icon-edit" id="glyphEdit" type="button" aria-label="Change icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
 
       <label class="sr-only" id="addrLabel" for="placeAddr">Address</label>
       <!-- Autocomplete, not a text field: what gets stored is one of the geocoder's own answers. -->

@@ -346,7 +346,10 @@ const el = {
   place: $("place"),
   placeTitle: $("placeTitle"),
   placeName: $("placeName"),
+  icons: $("icons"),
   placeIcons: $("placeIcons"),
+  glyphView: $("glyphView"),
+  glyphEdit: $("glyphEdit"),
   nameLabel: $("nameLabel"),
   addrLabel: $("addrLabel"),
   placeAddr: $("placeAddr"),
@@ -642,6 +645,7 @@ let deleteArmed = false;  // first tap arms the delete, second confirms it
 let resolveTimer = null;
 
 function closePlace() {
+  closeIcons();
   editing = null;          // a draft is simply dropped: it was never in state.places
   editingIsNew = false;
   deleteArmed = false;
@@ -664,6 +668,7 @@ function openPlace(place) {
   el.iconLabel.textContent = c.glyph;
   el.placeAddr.placeholder = c.address;      // the field's own hint, not a label above it
   el.placeName.value = nameOf(place);
+  el.glyphView.textContent = place.glyph || "📍";
   el.placeAddr.value = place.address || "";
   el.placeDel.textContent = c.delete;
   el.placeDel.classList.remove("confirm");
@@ -695,6 +700,15 @@ let searchTimer = null;
 let searchSeq = 0;
 let results = [];
 
+function openIcons() {
+  renderIcons();
+  el.icons.hidden = false;
+}
+
+function closeIcons() {
+  el.icons.hidden = true;
+}
+
 function renderIcons() {
   const chosen = (editing && editing.glyph) || "";
   el.placeIcons.replaceChildren(
@@ -708,7 +722,9 @@ function renderIcons() {
         if (!editing) return;
         editing.glyph = g;
         if (!editingIsNew) { save(); render(); }
+        el.glyphView.textContent = g;
         renderIcons();
+        closeIcons();
       });
       return b;
     }),
@@ -933,6 +949,14 @@ el.placeDone.addEventListener("click", () => {
   }
   closePlace();
 });
+
+el.glyphEdit.addEventListener("click", () => { if (editing) openIcons(); });
+
+/* The chooser is not a form: a tap picks, an outside tap or Escape just closes it. */
+el.icons.addEventListener("click", (e) => { if (e.target === el.icons) closeIcons(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !el.icons.hidden) { e.stopPropagation(); closeIcons(); }
+}, true);
 
 el.placeDel.addEventListener("click", () => {
   const c = t();
