@@ -349,7 +349,6 @@ const el = {
   icons: $("icons"),
   placeIcons: $("placeIcons"),
   glyphView: $("glyphView"),
-  glyphEdit: $("glyphEdit"),
   placeClose: $("placeClose"),
   nameLabel: $("nameLabel"),
   addrLabel: $("addrLabel"),
@@ -704,6 +703,7 @@ function openPlace(place) {
   el.placeAddr.placeholder = c.address;      // the field's own hint, not a label above it
   el.placeName.value = nameOf(place);
   el.glyphView.textContent = place.glyph || "📍";
+  el.glyphView.setAttribute("aria-label", `${c.glyph}: ${place.glyph || "📍"}`);
   el.placeAddr.value = place.address || "";
   el.placeDel.textContent = c.delete;
   el.placeDel.classList.remove("confirm");
@@ -758,6 +758,7 @@ function renderIcons() {
         editing.glyph = g;
         if (!editingIsNew) { save(); render(); }
         el.glyphView.textContent = g;
+        el.glyphView.setAttribute("aria-label", `${t().glyph}: ${g}`);   // the name follows the symbol
         renderIcons();
         closeIcons();
       });
@@ -965,7 +966,7 @@ el.placeDone.addEventListener("click", () => {
   closePlace();
 });
 
-el.glyphEdit.addEventListener("click", () => { if (editing) openIcons(); });
+el.glyphView.addEventListener("click", () => { if (editing) openIcons(); });
 
 /* Close without saving. X, an outside tap and Escape all do the same thing: an existing place goes
    back to the snapshot taken when the sheet opened, and a draft — never written anywhere — just goes
