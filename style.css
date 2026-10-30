@@ -714,6 +714,9 @@ html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
 /* The install steps are a dialog too, not a bottom sheet: it is opened from Settings, and it comes
    back to Settings when it closes. */
 #install { align-items: center; padding: 24px; }
+/* The icon itself at the top of the sheet: what they are adding, so the home screen afterwards is not
+   a surprise. Decorative — the heading says the words. */
+.install-mark { display: block; width: 72px; height: 72px; margin: 4px auto 10px; border-radius: 16px; }
 #install .panel { border-radius: 20px; }
 /* The answer's actions stay on screen and the answer itself scrolls: at 特大 on a 320x568 phone the
    打开地图 button sat 171 px below the fold, and the panel's bottom edge is the screen edge, so nothing
@@ -726,6 +729,9 @@ html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
 
 /* The steps scroll, 完成 does not: on a 320x568 phone the panel hit its 88vh cap and 完成 started 4 px
    below the fold, at the end of a four-step list with no scroll indicator (R38.5). */
+/* The icon itself at the top of the sheet: what they are adding, so the home screen afterwards is not
+   a surprise. Decorative — the heading says the words. */
+.install-mark { display: block; width: 72px; height: 72px; margin: 4px auto 10px; border-radius: 16px; }
 #install .panel { display: flex; flex-direction: column; }
 #install .steps { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 #install .sheet-title, #install .seg, #install .steps-note, #install .go { flex: 0 0 auto; }
