@@ -53,7 +53,6 @@ const COPY = {
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
     noMatches: "No match — try another spelling.",
-    checkMatch: (n, km) => `Check this: ${n}${km ? ` (${km} km away)` : ""}`,
     settingsTitle: "Settings",
     language: "Language",
     appearance: "Appearance",
@@ -120,7 +119,6 @@ const COPY = {
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
     noMatches: "没有找到，请换个写法。",
-    checkMatch: (n, km) => `请确认：${n}${km ? `（约${km}公里）` : ""}`,
     settingsTitle: "设置",
     language: "语言",
     appearance: "外观",
@@ -808,18 +806,16 @@ function duplicateNameOf(name, exceptId) {
 function pick(index) {
   const hit = results[index];
   if (!hit || !editing) return;
-  const typed = el.placeAddr.value.trim();
-  const { suspicious, away } = suspectMatch(typed || hit.name, hit);
+  // Picking from the list is the confirmation (Trix). The name was on screen and the finger chose it;
+  // a second line asking to confirm it second-guesses the only decision the helper just made.
   editing.address = hit.name;
   editing.coord = hit.coord;
   editing.resolvedName = hit.name;
-  editing.suspect = suspicious;
+  editing.suspect = false;
   el.placeAddr.value = hit.name;
   closeList();
-  // The only warning left: a candidate in another suburb. Not green, and it does not block the save —
-  // the helper can see the name they picked and fix it if it is wrong.
-  el.placeNote.hidden = !suspicious;
-  el.placeNote.textContent = suspicious ? t().checkMatch(hit.name, away) : "";
+  el.placeNote.hidden = true;
+  el.placeNote.textContent = "";
   if (!editingIsNew) { save(); render(); }
   refreshDone();
 }
@@ -889,14 +885,12 @@ function plausible(text, hit) {
   return words(hit.locality || "").some((w) => typed.has(w));
 }
 
-/* ---------- is this match believable? ----------
- * stop_finder matches words, not places: "Centennial Park" came back as a park 15 km away and
- * "12 Crown Street, Sydney" as a school in Crows Nest. Two cheap signals, locality first: a hit whose
- * suburb the person did not type, or one with no identifying word in common, is shown in amber and
- * never becomes a travel-time coordinate (R6.2, R7.4, R10.1).
+/* ---------- what a candidate has to share with the typed text ----------
+ * stop_finder answers word-shapes as places ("12 Crown Street" once returned a cafe called
+ * "Where Ya Bean?"), so a candidate joins the list only if it shares a word or a suburb with what was
+ * typed. That filter is the whole guard now: a pick from the list is confirmation and nothing is
+ * questioned afterwards (Trix).
  */
-const SYDNEY = { lat: -33.8688, lng: 151.2093 };
-
 // Words too generic to prove anything: "Sydney" and "Park" are in half the suburbs.
 const GENERIC = new Set([
   "sydney", "nsw", "new", "south", "wales", "australia", "the", "and", "of",
@@ -909,26 +903,6 @@ function words(s) {
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
     .split(" ")
     .filter((w) => w.length > 2 && !GENERIC.has(w));
-}
-
-function kmApart(a, b) {
-  const R = 6371, rad = (d) => (d * Math.PI) / 180;
-  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-function suspectMatch(address, hit) {
-  const typed = new Set(words(address));
-  const shared = words(hit.name).some((w) => typed.has(w));
-  // The suburb test only applies to a full address, the kind that names a suburb to begin with:
-  // "Paddy's Markets" is a place, not an address that forgot its suburb, and flagging it taught the
-  // helper to ignore the amber line.
-  const looksFull = /,|\bnsw\b/i.test(String(address));
-  const locality = words(hit.locality || "");
-  const localityOk = !looksFull || locality.length === 0 || locality.some((w) => typed.has(w));
-  const away = Math.round(kmApart(hit.coord, SYDNEY));
-  return { suspicious: !shared || !localityOk || away > 60, away: away > 60 ? away : 0 };
 }
 
 /* ---------- wiring ---------- */
