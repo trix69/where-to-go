@@ -571,3 +571,49 @@ body {
    middle of the screen, where the eye already is. */
 #manage { align-items: center; padding: 24px; }
 #manage .panel { border-radius: 20px; }
+
+/* Labels that screen readers need and eyes do not: the sheet title is the name, the icon grid is
+   icons, and the address field says 地址 until something is picked. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The place name is the heading of this sheet, so it is set like one rather than boxed like a field. */
+/* The name field is this sheet's heading: two "公园" lines stacked said the same thing twice. The
+   heading stays in the accessibility tree, invisible, so the dialog still has a name. */
+#place .sheet-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.title-input {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  margin: 0 0 12px;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--type-answer);
+  font-weight: 600;
+}
+.title-input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.addr-list button { padding-left: 12px; }

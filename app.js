@@ -35,7 +35,7 @@ const COPY = {
     gateSkip: "Look around",
     gateRetry: "Check again",
     regionTitle: "Not here yet",
-    regionMsg: "This app only works in New South Wales, Australia. It isn't available in your region yet.",
+    regionMsg: "It only works in New South Wales, Australia.",
     storageWarn: "This browser isn't saving changes (private browsing?). Places will be lost when you close the tab.",
     demo: "SAMPLE DATA — no live transit yet",
     // waitMin + rideMin is the arithmetic that lands on the arrival time printed beside it; the
@@ -94,7 +94,7 @@ const COPY = {
     gateSkip: "先看看",
     gateRetry: "重新定位",
     regionTitle: "本地区还没开通",
-    regionMsg: "这个应用目前只在澳大利亚新南威尔士州（NSW）可以使用，您所在的地区还没有开通。",
+    regionMsg: "这个应用目前只在澳大利亚新南威尔士州（NSW）可以使用。",
     storageWarn: "当前浏览器无法保存（无痕浏览？）。关闭后这些地点会丢失。",
     demo: "示例数据 — 还没接实时公交",
     // "路" is the bus-route suffix; a train line takes "号线", and ferry/light-rail numbers take neither.
@@ -662,6 +662,7 @@ function openPlace(place) {
   el.nameLabel.textContent = c.name;
   el.addrLabel.textContent = c.address;
   el.iconLabel.textContent = c.glyph;
+  el.placeAddr.placeholder = c.address;      // the field's own hint, not a label above it
   el.placeName.value = nameOf(place);
   el.placeAddr.value = place.address || "";
   el.placeDel.textContent = c.delete;

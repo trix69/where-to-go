@@ -74,12 +74,13 @@
   <section class="sheet" id="place" hidden aria-labelledby="placeTitle">
     <div class="panel">
       <h2 class="sheet-title" id="placeTitle"></h2>
-      <label class="fld" for="placeName"><span id="nameLabel">Name</span><input id="placeName" type="text" autocomplete="off"></label>
+      <label class="sr-only" id="nameLabel" for="placeName">Name</label>
+      <input id="placeName" class="title-input" type="text" autocomplete="off">
 
-      <p class="fld-label" id="iconLabel">Icon</p>
+      <p class="sr-only" id="iconLabel">Icon</p>
       <div class="icons" id="placeIcons" role="group" aria-labelledby="iconLabel"></div>
 
-      <label class="fld" for="placeAddr"><span id="addrLabel">Address</span></label>
+      <label class="sr-only" id="addrLabel" for="placeAddr">Address</label>
       <!-- Autocomplete, not a text field: what gets stored is one of the geocoder's own answers. -->
       <div class="combo">
         <input id="placeAddr" type="text" autocomplete="off" spellcheck="false"
