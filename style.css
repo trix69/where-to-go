@@ -12,8 +12,12 @@
   --accent-ink: #ffffff;
   --danger: #a1261c;
 
-  --tile-min: 132px;
-  --tap: 60px;
+  /* Text size is a setting. Everything above the root is in rem, so one multiplier moves the whole
+     page; the two px minimums only grow, never shrink, so choosing 小 cannot make a target harder to
+     hit than it already is. */
+  --fs: 1;
+  --tile-min: calc(132px * max(1, var(--fs)));
+  --tap: calc(60px * max(1, var(--fs)));
   --radius: 20px;
 
   --type: 1.30rem;          /* body floor ~21px */
@@ -23,6 +27,15 @@
 
   color-scheme: light dark;
 }
+
+:root[data-size="sm"] { --fs: 0.90; }
+:root[data-size="md"] { --fs: 1.00; }
+:root[data-size="lg"] { --fs: 1.15; }
+:root[data-size="xl"] { --fs: 1.30; }
+
+/* 100% is the browser's own base, so a person who has already made text large in their phone's
+   settings gets that multiplied, not overridden. */
+html { font-size: calc(100% * var(--fs)); }
 
 /* Three states, not two: automatic follows the phone, and the other two override it. Automatic is
    the default because most people have already set their phone up the way they can read it. */
@@ -496,6 +509,10 @@ body {
   font-weight: 600;
 }
 .seg-label { margin: 0 0 8px; font-size: var(--type); color: var(--ink-soft); }
+/* Four choices, two per row: at 特大 four across no longer fits, and three-then-one reads like a
+   mistake. Two even columns whatever the text size. */
+#sizeRow { flex-wrap: wrap; }
+#sizeRow button { flex: 1 1 calc(50% - 5px); }
 /* Home-screen steps: a number, the words, and the button to look for drawn at the end. The number is
    what makes a list of four sentences read as a sequence for someone who is not sure where they are. */
 .steps {

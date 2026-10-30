@@ -110,6 +110,8 @@ const COPY = {
       "Tap Add to confirm.",
     ],
     homeNote: "Once it is on the home screen, one tap opens it.",
+    sizeLabel: "Text size",
+    sizes: { sm: "Small", md: "Medium", lg: "Large", xl: "Extra large" },
   },
   "zh-Hans": {
     ask: "想去哪儿?",
@@ -226,6 +228,8 @@ const COPY = {
       "再点一次「添加」。",
     ],
     homeNote: "放到主屏幕后，从桌面一下点开。",
+    sizeLabel: "字体大小",
+    sizes: { sm: "小", md: "中", lg: "大", xl: "特大" },
   },
 };
 
@@ -346,7 +350,7 @@ function load() {
       }
     }
   } catch (e) { /* private mode, corrupt value: fall through to the seed */ }
-  return { lang: pickLang(), theme: "light", seedVersion: SEED_VERSION, places: SEED.map((p) => ({ ...p })) };
+  return { lang: pickLang(), theme: "light", fontSize: "md", seedVersion: SEED_VERSION, places: SEED.map((p) => ({ ...p })) };
 }
 
 function save() {
@@ -438,6 +442,8 @@ const el = {
   langLabel: $("langLabel"),
   themeRow: $("themeRow"),
   themeLabel: $("themeLabel"),
+  sizeRow: $("sizeRow"),
+  sizeLabel: $("sizeLabel"),
   install: $("install"),
   installTitle: $("installTitle"),
   installBtn: $("installBtn"),
@@ -738,6 +744,18 @@ async function openAnswer(place, opts = {}) {
   if (!refresh) startRefresh(place);
 }
 
+/* ---------- text size ----------
+ * Four steps, applied as one multiplier on the root font size, because everything above it is in rem.
+ * 小 is deliberately allowed to sit just under the 20 px body floor this app was designed to: it is an
+ * opt-in for someone with a large phone, whereas 中 is what the design is measured at.
+ */
+
+const SIZES = ["sm", "md", "lg", "xl"];
+
+function applySize() {
+  document.documentElement.dataset.size = SIZES.includes(state.fontSize) ? state.fontSize : "md";
+}
+
 /* ---------- add to the home screen ----------
  * The shape is Violin Toolkit's install sheet — pick the phone, then numbered steps with the button to
  * look for drawn beside the step — without its offline promise: this app has no offline mode, and the
@@ -837,6 +855,18 @@ function openManage() {
         save();
         openManage();
       });
+      return b;
+    }),
+  );
+  el.sizeLabel.textContent = c.sizeLabel;
+  el.sizeRow.replaceChildren(
+    ...SIZES.map((id) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = c.sizes[id];
+      b.setAttribute("aria-pressed", String((state.fontSize || "md") === id));
+      b.setAttribute("aria-label", `${c.sizeLabel}: ${c.sizes[id]}`);
+      b.addEventListener("click", () => { state.fontSize = id; applySize(); save(); openManage(); });
       return b;
     }),
   );
@@ -1350,6 +1380,7 @@ function setRegionVerdict(v) {
 
 async function boot() {
   applyTheme();
+  applySize();
   const c = t();
 
   // A site-level refusal cannot be re-prompted, and it is not a reason to block the app: the
