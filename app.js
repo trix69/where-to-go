@@ -52,7 +52,8 @@ const COPY = {
       }
       const change = t.changes > 0 ? ` Change ${t.changes} time${t.changes > 1 ? "s" : ""} on the way.` : "";
       const at = (stop, platform) => (platform ? `${stop}, platform ${platform}` : stop);
-      return `${head}: board at ${at(t.board, t.boardPlatform)}, ` +
+      const way = t.towards ? ` towards ${t.towards}` : "";
+      return `${head}${way}: board at ${at(t.board, t.boardPlatform)}, ` +
         `${t.stops} stop${t.stops > 1 ? "s" : ""}, get off at ${at(t.alight, t.alightPlatform)}.` +
         `${change} Leaving in ${tail}`;
     },
@@ -126,7 +127,10 @@ const COPY = {
       }
       const change = t.changes > 0 ? `中途换乘${t.changes}次。` : "";
       const at = (stop, platform) => (platform ? `${stop} ${platform}号站台` : stop);
-      return `${line}：从${at(t.board, t.boardPlatform)}上车，坐${t.stops}站，` +
+      // Which way the vehicle is going: that is what its front display says, and a platform holds both
+      // directions. Always shown when the provider gives a terminus (Trix).
+      const way = t.towards ? `（开往${t.towards}）` : "";
+      return `${line}${way}：从${at(t.board, t.boardPlatform)}上车，坐${t.stops}站，` +
         `到${at(t.alight, t.alightPlatform)}下车。${change}` +
         `${t.waitMin}分钟后有车${arrive ? `，${arrive}到` : ""}。`;
     },
