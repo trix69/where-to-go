@@ -326,5 +326,23 @@ ok("a github.io referer still allowed when Origin is absent",
     parsed?.name === "Norton Street, Leichhardt" && parsed.coord.lng === 151.1570293, JSON.stringify(parsed));
 }
 
+/* Both languages carry every key. A missing one is invisible in the source and shows as an empty button
+   on the served build — which is how 取消 shipped blank for one deploy (2026-10-31). */
+{
+  const src = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const at = src.indexOf("const COPY = {");
+  const enAt = src.indexOf("  en: {", at);
+  const zhAt = src.indexOf('"zh-Hans": {', at);
+  const endAt = src.indexOf("\n};", zhAt);
+  const keysIn = (from, to) => new Set([...src.slice(from, to).matchAll(/^\s{4}([A-Za-z_$][\w$]*):/gm)].map((m) => m[1]));
+  const en = keysIn(enAt, zhAt);
+  const zh = keysIn(zhAt, endAt);
+  const missingZh = [...en].filter((k) => !zh.has(k));
+  const missingEn = [...zh].filter((k) => !en.has(k));
+  ok("every English copy key exists in Chinese", missingZh.length === 0, missingZh.join(", "));
+  ok("every Chinese copy key exists in English", missingEn.length === 0, missingEn.join(", "));
+  ok("the copy table is not empty", en.size > 50, String(en.size));
+}
+
 console.log(failures ? `\n${failures} failed` : "\nall passed");
 process.exit(failures ? 1 : 0);
