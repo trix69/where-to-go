@@ -671,6 +671,11 @@ body {
    back to Settings when it closes. */
 #install { align-items: center; padding: 24px; }
 #install .panel { border-radius: 20px; }
+/* The steps scroll, 完成 does not: on a 320x568 phone the panel hit its 88vh cap and 完成 started 4 px
+   below the fold, at the end of a four-step list with no scroll indicator (R38.5). */
+#install .panel { display: flex; flex-direction: column; }
+#install .steps { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+#install .sheet-title, #install .seg, #install .steps-note, #install .go { flex: 0 0 auto; }
 
 
 /* Labels that screen readers need and eyes do not: the sheet title is the name, the icon grid is

@@ -231,5 +231,27 @@ ok("a github.io referer still allowed when Origin is absent",
   ok("stops counted on the ride, not the walk", t.stops === 3, String(t.stops));
 }
 
+
+/* --- the provider's own product names map to the right noun (R37.1) ----------------------- */
+
+{
+  const leg = (cls, name, number) => ({ transportation: { number, product: { class: cls, name } } });
+  const mode = (cls, name) => summarise({ journeys: [{ legs: [
+    { transportation: { product: { class: 100, name: "footpath" } },
+      origin: { name: "Home", departureTimeEstimated: "2026-10-29T23:46:00Z" },
+      destination: { name: "A", arrivalTimeEstimated: "2026-10-29T23:50:00Z" } },
+    { ...leg(cls, name, "X1"), origin: { name: "A", departureTimeEstimated: "2026-10-30T00:00:00Z" },
+      destination: { name: "B", arrivalTimeEstimated: "2026-10-30T00:10:00Z" }, stopSequence: [{}, {}] },
+  ] }] }, new Date("2026-10-29T23:50:00Z")).mode;
+
+  ok("Sydney Ferries Network is a ferry", mode(9, "Sydney Ferries Network") === "ferry", mode(9, "Sydney Ferries Network"));
+  ok("private ferry services are a ferry", mode(9, "Private ferry and fast ferry services") === "ferry",
+    mode(9, "Private ferry and fast ferry services"));
+  ok("Sydney Metro Network is metro", mode(2, "Sydney Metro Network") === "metro", mode(2, "Sydney Metro Network"));
+  ok("Sydney Light Rail Network is light rail", mode(4, "Sydney Light Rail Network") === "lightrail",
+    mode(4, "Sydney Light Rail Network"));
+  ok("Sydney Buses Network is a bus", mode(5, "Sydney Buses Network") === "bus", mode(5, "Sydney Buses Network"));
+}
+
 console.log(failures ? `\n${failures} failed` : "\nall passed");
 process.exit(failures ? 1 : 0);

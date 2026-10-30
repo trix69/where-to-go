@@ -8,6 +8,9 @@
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#111411" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<!-- iOS does not use an SVG web clip: without a PNG apple-touch-icon, "Add to Home Screen" draws a
+     screenshot of the page instead of the app's own face (R38.2). Opaque, no rounding — iOS masks it. -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <!-- No service worker, by decision (PROJECT.md §7): this app is useless offline, so it does not pretend otherwise. -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="mobile-web-app-capable" content="yes">
@@ -39,10 +42,10 @@
   <ul class="tiles" id="tiles"></ul>
 
   <!-- Answer for one place. Two actions only: go, or go back. -->
-  <section class="sheet" id="sheet" hidden aria-labelledby="sheetTitle">
+  <section class="sheet" id="sheet" role="dialog" aria-modal="true" hidden aria-labelledby="sheetTitle">
     <div class="panel">
       <div class="sheet-head">
-        <h2 class="sheet-title" id="sheetTitle"></h2>
+        <h2 class="sheet-title" id="sheetTitle" tabindex="-1"></h2>
         <button class="sheet-edit" id="editPlace" type="button" aria-label="Edit">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
@@ -57,9 +60,9 @@
   </section>
 
   <!-- Settings: the two things that are not about a place. Addresses are edited on the tile itself. -->
-  <section class="sheet" id="manage" hidden aria-labelledby="manageTitle">
+  <section class="sheet" id="manage" role="dialog" aria-modal="true" hidden aria-labelledby="manageTitle">
     <div class="panel">
-      <h2 class="sheet-title" id="manageTitle">Settings</h2>
+      <h2 class="sheet-title" id="manageTitle" tabindex="-1">Settings</h2>
       <p class="warn" id="storageWarn" hidden></p>
       <p class="seg-label" id="langLabel">Language</p>
       <div class="seg" id="langRow" role="group" aria-labelledby="langLabel"></div>
@@ -77,9 +80,9 @@
        a person taps one icon on their own phone instead of finding the browser first. Same shape as
        Violin Toolkit's install sheet: pick the phone, then three numbered steps with the button they
        are looking for drawn beside the step. -->
-  <section class="sheet" id="install" hidden aria-labelledby="installTitle">
+  <section class="sheet" id="install" role="dialog" aria-modal="true" hidden aria-labelledby="installTitle">
     <div class="panel">
-      <h2 class="sheet-title" id="installTitle">Add to home screen</h2>
+      <h2 class="sheet-title" id="installTitle" tabindex="-1">Add to home screen</h2>
       <p class="sr-only" id="devLabel">Phone</p>
       <div class="seg" id="devRow" role="group" aria-labelledby="devLabel"></div>
       <ol class="steps" id="stepsIos"></ol>
@@ -90,17 +93,17 @@
   </section>
 
   <!-- The icon chooser: opened from the pencil beside the symbol, closes when one is picked. -->
-  <section class="sheet picker" id="icons" hidden aria-labelledby="iconLabel">
+  <section class="sheet picker" id="icons" role="dialog" aria-modal="true" hidden aria-labelledby="iconLabel">
     <div class="panel">
       <p class="sr-only" id="iconLabel">Icon</p>
-      <div class="icons" id="placeIcons" role="group" aria-labelledby="iconLabel"></div>
+      <div class="icons" id="placeIcons" role="group" aria-labelledby="iconLabel" tabindex="-1"></div>
     </div>
   </section>
 
   <!-- One place, opened from its pencil. Has the delete, and the delete asks twice. -->
-  <section class="sheet" id="place" hidden aria-labelledby="placeTitle">
+  <section class="sheet" id="place" role="dialog" aria-modal="true" hidden aria-labelledby="placeTitle">
     <div class="panel">
-      <h2 class="sheet-title" id="placeTitle"></h2>
+      <h2 class="sheet-title" id="placeTitle" tabindex="-1"></h2>
       <button class="sheet-close" id="placeClose" type="button" aria-label="Close">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>

@@ -164,7 +164,9 @@ const MODE_BY_NAME = [
   ["light rail", "lightrail"],
   ["tram", "lightrail"],
   ["train", "train"],
-  ["ferry", "ferry"],
+  // "ferr" not "ferry": the provider's own names are "Sydney Ferries Network" and "Private ferry and
+  // fast ferry services" — one is plural, so the singular never matched it and a ferry became a bus.
+  ["ferr", "ferry"],
   ["bus", "bus"],
   ["coach", "coach"],
 ];
@@ -172,10 +174,14 @@ const MODE_BY_NAME = [
 function modeOf(leg) {
   const name = (leg?.transportation?.product?.name || "").toLowerCase();
   for (const [k, v] of MODE_BY_NAME) if (name.includes(k)) return v;
+  // Measured against the provider, 2026-10-30: 1 Intercity/Sydney Trains, 2 Sydney Metro Network,
+  // 4 Sydney Light Rail Network, 5 Sydney Buses Network, 9 Sydney Ferries Network, 100 footpath.
   const cls = leg?.transportation?.product?.class;
   if (cls === 1) return "train";
+  if (cls === 2) return "metro";
+  if (cls === 4) return "lightrail";
   if (cls === 5) return "bus";      // Sydney Buses Network
-  if (cls === 9) return "bus";
+  if (cls === 9) return "ferry";    // Sydney Ferries Network — was "bus", which is how R37.1 shipped
   if (cls === 100) return "walk";   // footpath: a real product class, with a transportation block
   return "transit";
 }

@@ -50,7 +50,6 @@ const COPY = {
         return `${head} in ${t.waitMin} min, ${t.rideMin ?? t.durationMin} min on board` +
           (arrive ? `, arriving ${arrive}.` : ".");
       }
-      const change = t.changes > 0 ? ` Change ${t.changes} time${t.changes > 1 ? "s" : ""} on the way.` : "";
       const at = (stop, platform) => (platform ? `${stop}, platform ${platform}` : stop);
       const way = t.towards ? ` towards ${t.towards}` : "";
       const platform = /^\d+[A-Za-z]?$/.test(String(t.boardPlatform || "")) ? `platform ${t.boardPlatform}` : "";
@@ -58,11 +57,19 @@ const COPY = {
       const service = [`${head}${way}`, platform, `in ${t.waitMin} min`, departs ? `departs ${departs}` : ""]
         .filter(Boolean).join(" · ");
       const stopAt = t.alightISO ? clock(t.alightISO) : "";
-      const tail2 = t.changes === 0 && t.walkFromStopMin > 0 && stopAt && arrive
-        ? `${stopAt} at the stop. ${t.walkFromStopMin} min walk, ${arrive} at the door.`
-        : `${stopAt ? `${stopAt} at the stop. ` : ""}${arrive ? `${arrive} at the door.` : ""}`;
+      const doorAt = arrive && arrive !== stopAt ? clockAfter(t.alightISO || t.departISO, t.arriveISO) : "";
+      // The change notice carries the door clock on a journey with a change, so the second time is not
+      // left standing beside the first vehicle's stop (R37.2).
+      const change = t.changes > 0
+        ? ` Change ${t.changes} time${t.changes > 1 ? "s" : ""} on the way${doorAt ? `, arriving ${doorAt}` : ""}.`
+        : "";
+      const tail2 = t.changes > 0
+        ? stopAt ? `${stopAt} at the stop.` : ""
+        : t.walkFromStopMin > 0 && stopAt && doorAt
+          ? `${stopAt} at the stop. ${t.walkFromStopMin} min walk, ${doorAt} at the door.`
+          : `${stopAt && doorAt ? `${stopAt} at the stop. ` : ""}${doorAt ? `${doorAt} at the door.` : ""}`;
       return `${service}\nBoard at ${t.board}, ${t.stops} stop${t.stops > 1 ? "s" : ""}, ` +
-        `get off at ${t.alight}.${change} ${tail2}`;
+        `get off at ${t.alight}.${change}${tail2 ? ` ${tail2}` : ""}`;
     },
     modes: { bus: "Bus", train: "Train", ferry: "Ferry", lightrail: "Light rail", metro: "Metro", coach: "Coach" },
     failed: "No answer right now.",
@@ -106,7 +113,7 @@ const COPY = {
     stepsAndroid: [
       "Open this page in Chrome.",
       "Tap the three dots at the top right.",
-      "Tap Add to Home screen, or Install app.",
+      "Tap Add to Home screen.",
       "Tap Add to confirm.",
     ],
     homeNote: "Once it is on the home screen, one tap opens it.",
@@ -149,7 +156,6 @@ const COPY = {
         const then = t.walkFromStopMin > 0 ? `，下车后再走${t.walkFromStopMin}分钟` : "";
         return `坐${ride}，${t.waitMin}分钟后有车，车上大约${t.rideMin ?? t.durationMin}分钟${then}${arrive ? `，${arrive}到` : ""}。`;
       }
-      const change = t.changes > 0 ? `中途换乘${t.changes}次。` : "";
       const at = (stop, platform) => (platform ? `${stop} ${platform}号站台` : stop);
       // Which way the vehicle is going: that is what its front display says, and a platform holds both
       // directions. Always shown when the provider gives a terminus (Trix).
@@ -165,7 +171,9 @@ const COPY = {
        *   3. the walk to the door, with the one arrival time that matters
        * The draft repeated itself: "22:23到站" and "预计到达时间22:32" are the stop and the door, and
        * "8分钟后到站，22:22发车" was one departure described twice. */
-      const verb = ["bus", "coach", "lightrail", "metro"].includes(t.mode) ? "到站" : "发车";
+      // A bus pulls up at a stop (到站), a train leaves a platform (发车), a ferry leaves a wharf (开船).
+      // An unmapped mode says nothing rather than borrowing the train's verb (R37.1).
+      const verb = ({ bus: "到站", coach: "到站", lightrail: "到站", metro: "到站", train: "发车", ferry: "开船" })[t.mode] || "";
       const service = [`${line}${way}`, platform,
         `${t.waitMin}分钟后${verb}${departs ? `（${departs}）` : ""}`].filter(Boolean).join(" · ");
 
@@ -174,13 +182,22 @@ const COPY = {
       const ride = `从${t.board}上车，坐${t.stops}站，` +
         (stopAt ? `${stopAt}在${t.alight}下车。` : `在${t.alight}下车。`);
 
-      const walkLine = arrive && t.changes === 0 && t.walkFromStopMin > 0
-        ? `再走${t.walkFromStopMin}分钟，${arrive}到。`
+      /* One clock when the ride ends at the door (R37.3): stopAt and arrive are then the same instant,
+       * and printing both eight words apart reads as a mistake. */
+      const doorAt = arrive && arrive !== stopAt ? clockAfter(t.alightISO || t.departISO, t.arriveISO) : "";
+      const walkLine = doorAt && t.changes === 0 && t.walkFromStopMin > 0
+        ? `再走${t.walkFromStopMin}分钟，${doorAt}到。`
         : "";
-      // No walk to describe: the arrival belongs on the ride line, so it is not left unsaid.
-      const rideWithArrival = walkLine || !arrive ? ride : `${ride.replace(/。$/, "")}，${arrive}到。`;
+      // With no walk line the door time belongs on the ride line — but on a journey with a change it
+      // travels with the change notice, which is the thing that explains the gap (R37.2).
+      const rideWithArrival = walkLine || !doorAt || t.changes > 0
+        ? ride
+        : `${ride.replace(/。$/, "")}，${doorAt}到。`;
+      const changeNow = t.changes > 0
+        ? `中途换乘${t.changes}次${doorAt ? `，${doorAt}到` : ""}。`
+        : "";
 
-      return [service, rideWithArrival + change, walkLine].filter(Boolean).join("\n");
+      return [service, rideWithArrival + changeNow, walkLine].filter(Boolean).join("\n");
     },
     modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },
     failed: "现在查不到。",
@@ -224,7 +241,7 @@ const COPY = {
     stepsAndroid: [
       "用 Chrome 打开这个网页。",
       "点右上角的三个点。",
-      "点「添加到主屏幕」或「安装应用」。",
+      "点「添加到主屏幕」。",
       "再点一次「添加」。",
     ],
     homeNote: "放到主屏幕后，从桌面一下点开。",
@@ -409,9 +426,23 @@ function applyTheme() {
 function clock(iso) {
   const d = new Date(iso);
   if (!iso || Number.isNaN(d.getTime())) return "";
-  const opts = { hour: "numeric", minute: "2-digit", timeZone: "Australia/Sydney" };
+  // "2-digit", not "numeric": numeric prints 0:27 after midnight, which reads as earlier than the
+  // 23:41 it follows (R37.4).
+  const opts = { hour: "2-digit", minute: "2-digit", timeZone: "Australia/Sydney" };
   if (state.lang === "en") return d.toLocaleTimeString("en-AU", opts);
   return d.toLocaleTimeString("zh-CN", { ...opts, hourCycle: "h23" });
+}
+
+/* A trip that crosses midnight prints 次日 before the clock that has rolled over, because a bare 00:27
+ * after 23:41 reads as a mistake rather than a next day. */
+function sydneyDay(iso) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+}
+function clockAfter(fromISO, iso) {
+  const text = clock(iso);
+  return text && fromISO && sydneyDay(fromISO) !== sydneyDay(iso) ? `次日${text}` : text;
 }
 const nameOf = (place) => (place.name && (place.name[state.lang] || place.name.en)) || place.address;
 
@@ -537,12 +568,30 @@ function addTile() {
   return li;
 }
 
+/* Which control opened the dialog that is open now. A screen-reader user taps the 添加到主屏幕 row,
+ * the row goes hidden underneath them, and nothing is announced — so the arriving dialog takes focus
+ * and the closing dialog hands it back (R38.4). */
+let opener = null;
+
 function show(which) {
+  const wasOpen = !el.sheet.hidden || !el.manage.hidden || !el.place.hidden || !el.install.hidden || !el.icons.hidden;
+  if (which && !wasOpen) opener = document.activeElement;
+
   el.sheet.hidden = which !== "answer";
   el.manage.hidden = which !== "manage";
   el.place.hidden = which !== "place";
   el.install.hidden = which !== "install";
+  if (which !== "icons") el.icons.hidden = true;
   document.body.style.overflow = which ? "hidden" : "";
+
+  if (which) {
+    const root = { answer: el.sheet, manage: el.manage, place: el.place, install: el.install, icons: el.icons }[which];
+    const target = root && root.querySelector(".sheet-title[tabindex], [data-focus], .icons[tabindex]");
+    target?.focus?.({ preventScroll: true });
+  } else if (opener && document.contains(opener)) {
+    opener.focus?.({ preventScroll: true });
+    opener = null;
+  }
 }
 
 /* ---------- region gate ----------
@@ -809,8 +858,9 @@ function openInstall() {
   );
   // The icon drawn beside a step is the button the step tells them to tap, so it sits on the step
   // that names it and nowhere else.
-  fillSteps(el.stepsIos, c.stepsIos, [null, ICON_SHARE, ICON_ADD, null]);
-  fillSteps(el.stepsAndroid, c.stepsAndroid, [null, ICON_MENU, ICON_ADD, null]);
+  // The plus belongs on the step that names 添加, not on the one that opens the share sheet (R38.1).
+  fillSteps(el.stepsIos, c.stepsIos, [null, ICON_SHARE, null, ICON_ADD]);
+  fillSteps(el.stepsAndroid, c.stepsAndroid, [null, ICON_MENU, null, ICON_ADD]);
   el.stepsIos.hidden = device !== "ios";
   el.stepsAndroid.hidden = device !== "android";
   show("install");
