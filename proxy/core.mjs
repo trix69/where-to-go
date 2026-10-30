@@ -275,6 +275,10 @@ export function summarise(json, now = new Date()) {
     rideMin: mins(depart, arrive),      // on board; waitMin + rideMin is what lands on arriveISO
     arriveISO: arrive.toISOString(),
     walkToStopMin: mins(start, depart) > 0 ? mins(start, depart) : 0,
+    /* The last leg is usually a walk from the stop to the door. The arrival time has always included it
+     * — it is the journey's own arrival — but the sentence did not say so, and a reader at the stop heard
+     * "22:23到" as the tram's arrival at the stop they just got off at (Trix asked). */
+    walkFromStopMin: isWalk(legs[legs.length - 1]) ? mins(when(legs[legs.length - 1].origin?.departureTimeEstimated || legs[legs.length - 1].origin?.departureTimePlanned), arrive) : 0,
     departISO: depart.toISOString(),
     realtime: Boolean(firstRide.origin?.departureTimeEstimated),
     changes: legs.filter((l) => !isWalk(l)).length - 1,

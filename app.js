@@ -53,8 +53,9 @@ const COPY = {
       const change = t.changes > 0 ? ` Change ${t.changes} time${t.changes > 1 ? "s" : ""} on the way.` : "";
       const at = (stop, platform) => (platform ? `${stop}, platform ${platform}` : stop);
       const way = t.towards ? ` towards ${t.towards}` : "";
+      const then = t.walkFromStopMin > 0 ? ` then a ${t.walkFromStopMin} min walk.` : "";
       return `${head}${way}: board at ${at(t.board, t.boardPlatform)}, ` +
-        `${t.stops} stop${t.stops > 1 ? "s" : ""}, get off at ${at(t.alight, t.alightPlatform)}.` +
+        `${t.stops} stop${t.stops > 1 ? "s" : ""}, get off at ${at(t.alight, t.alightPlatform)}${then}` +
         `${change} Leaving in ${tail}`;
     },
     modes: { bus: "Bus", train: "Train", ferry: "Ferry", lightrail: "Light rail", metro: "Metro", coach: "Coach" },
@@ -120,15 +121,18 @@ const COPY = {
       if (!t.board || !t.alight || !t.stops) {
         // No stop list (mock, or a provider that does not give one): keep the older, vaguer sentence.
         const ride = t.towards ? `${line}（开往${t.towards}）` : line;
-        return `坐${ride}，${t.waitMin}分钟后有车，车上大约${t.rideMin ?? t.durationMin}分钟${arrive ? `，${arrive}到` : ""}。`;
+        const then = t.walkFromStopMin > 0 ? `，下车后再走${t.walkFromStopMin}分钟` : "";
+        return `坐${ride}，${t.waitMin}分钟后有车，车上大约${t.rideMin ?? t.durationMin}分钟${then}${arrive ? `，${arrive}到` : ""}。`;
       }
       const change = t.changes > 0 ? `中途换乘${t.changes}次。` : "";
       const at = (stop, platform) => (platform ? `${stop} ${platform}号站台` : stop);
       // Which way the vehicle is going: that is what its front display says, and a platform holds both
       // directions. Always shown when the provider gives a terminus (Trix).
       const way = t.towards ? `（开往${t.towards}）` : "";
+      // The arrival time is the time at the door, not at the stop — so say the walk when there is one.
+      const then = t.walkFromStopMin > 0 ? `，再走${t.walkFromStopMin}分钟` : "";
       return `${line}${way}：从${at(t.board, t.boardPlatform)}上车，坐${t.stops}站，` +
-        `到${at(t.alight, t.alightPlatform)}下车。${change}` +
+        `到${at(t.alight, t.alightPlatform)}下车${then}。${change}` +
         `${t.waitMin}分钟后有车${arrive ? `，${arrive}到` : ""}。`;
     },
     modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },

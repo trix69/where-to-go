@@ -207,5 +207,27 @@ ok("a github.io referer still allowed when Origin is absent",
   ok("no stopSequence → stops is null, not a guess", t.stops === null, String(t.stops));
 }
 
+
+/* --- the arrival time is the door, not the stop (R34) ----------------------------------- */
+
+{
+  const j = { journeys: [{ legs: [
+    { origin: { departureTimePlanned: "2026-10-30T08:50:00Z" }, destination: { arrivalTimePlanned: "2026-10-30T08:53:00Z" } },
+    {
+      transportation: { number: "L1", product: { class: 4, name: "Light Rail" } },
+      origin: { name: "Leichhardt North", departureTimeEstimated: "2026-10-30T08:53:00Z" },
+      destination: { name: "Taverners Hill", arrivalTimeEstimated: "2026-10-30T09:05:00Z" },
+      stopSequence: [{ name: "a" }, { name: "b" }, { name: "c" }, { name: "d" }],
+    },
+    { transportation: { product: { class: 100, name: "footpath" } },   // the walk to the door
+      origin: { name: "Taverners Hill", departureTimeEstimated: "2026-10-30T09:05:00Z" },
+      destination: { name: "12 Norton St, Leichhardt", arrivalTimeEstimated: "2026-10-30T09:08:00Z" } },
+  ] }] };
+  const t = summarise(j, new Date("2026-10-30T08:46:00Z"));
+  ok("final walk measured (3 min)", t.walkFromStopMin === 3, String(t.walkFromStopMin));
+  ok("arrival is the door, not the stop", t.arriveISO === "2026-10-30T09:08:00.000Z", String(t.arriveISO));
+  ok("stops counted on the ride, not the walk", t.stops === 3, String(t.stops));
+}
+
 console.log(failures ? `\n${failures} failed` : "\nall passed");
 process.exit(failures ? 1 : 0);
