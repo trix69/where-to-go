@@ -28,7 +28,7 @@ const COPY = {
     looking: "Checking…",
     locating: "Getting your location…",
     locationOff: "Your browser hasn't allowed this site to use location. Allow it in the browser, then try again.",
-    locationBlocked: "Location is switched off for this device. Turn it on in Settings, then try again.",
+    locationBlocked: "Couldn't get your location. Check that device location is on, then try again.",
     locationFailed: "Couldn't get your location. Try again.",
     useMyLocation: "Use my location",
     gateChecking: "Checking your location…",
@@ -102,7 +102,7 @@ const COPY = {
     looking: "正在查询…",
     locating: "正在获取您的位置…",
     locationOff: "浏览器还没允许这个网站使用定位。请在浏览器里允许，再试一次。",
-    locationBlocked: "设备的定位服务关着。请在设置里打开定位，再试一次。",
+    locationBlocked: "拿不到定位。请确认设备的定位已打开，再试一次。",
     locationFailed: "暂时定位不到，请重试。",
     useMyLocation: "使用我的位置",
     gateChecking: "正在确认位置…",
@@ -516,7 +516,10 @@ function askOnce(maxAge) {
     watchdog = setTimeout(() => finish({ error: "timeout" }), 10000);
     navigator.geolocation.getCurrentPosition(
       (pos) => finish({ coord: { lng: pos.coords.longitude, lat: pos.coords.latitude } }),
-      (err) => finish({ error: err && err.code === 1 ? "denied" : err && err.code === 3 ? "timeout" : "unavailable" }),
+      (err) => finish({
+        error: err && err.code === 1 ? "denied" : err && err.code === 3 ? "timeout" : "unavailable",
+        code: err && err.code,
+      }),
       { timeout: 10000, maximumAge: maxAge, enableHighAccuracy: false },
     );
   });
@@ -540,7 +543,7 @@ async function askLocation(opts = {}) {
     await new Promise((r) => setTimeout(r, 900));
     res = await askOnce(maxAge);
   }
-  if (res.coord) res = { coord: res.coord, at: Date.now() };
+  if (res.coord) return { coord: res.coord, at: Date.now() };
   if (res.error !== "denied") return res;
 
   /* Chrome answers PERMISSION_DENIED when the *operating system* has location switched off, even
@@ -551,7 +554,19 @@ async function askLocation(opts = {}) {
   try {
     state = (await navigator.permissions.query({ name: "geolocation" })).state;
   } catch { /* not implemented everywhere */ }
-  return state === "granted" ? { error: "blocked" } : res;
+  if (state !== "granted") return res;
+
+  /* Permission says yes and the browser said no. That is either the operating system withholding a fix
+   * or a hiccup in Chrome's own positioning service, and the two are indistinguishable from here — so
+   * it gets one more attempt before anything is blamed, and the sentence stays neutral (R25's
+   * "设备的定位服务关着" asserted a cause the app cannot see). */
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await new Promise((r) => setTimeout(r, 900));
+    const again = await askOnce(maxAge);
+    if (again.coord) return { coord: again.coord, at: Date.now() };
+    res = again;
+  }
+  return { error: "blocked", code: res.code, perm: state };
 }
 
 async function originFor() {
@@ -559,7 +574,11 @@ async function originFor() {
   // someone is at home sends a person standing at a bus stop to the wrong place, and the Home place
   // no longer has an address to guess with.
   const loc = await askLocation();
-  return loc.coord ? { coord: loc.coord } : { error: loc.error };
+  // The code and the permission state travel with a failure: without them the card can only guess at a
+  // cause, and ?diag=1 can only print question marks.
+  return loc.coord
+    ? { coord: loc.coord }
+    : { error: loc.error, code: loc.code, perm: loc.perm };
 }
 
 async function openAnswer(place, opts = {}) {
@@ -603,6 +622,11 @@ async function openAnswer(place, opts = {}) {
       el.summary.textContent = origin.error === "denied" ? c.locationOff
         : origin.error === "blocked" ? c.locationBlocked
         : c.locationFailed;
+      // ?diag=1 appends what the browser actually said, for a report like "I granted it and it still
+      // fails" — the app's own sentence is deliberately vague because it cannot know the cause.
+      if (new URLSearchParams(window.location.search).has("diag") && origin.error) {
+        el.summary.textContent += ` [${origin.error} perm=${origin.perm || "?"} code=${origin.code ?? "?"}]`;
+      }
       el.retryLoc.textContent = c.useMyLocation;
       el.retryLoc.hidden = false;
       el.go.textContent = c.stillGo;
