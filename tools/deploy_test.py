@@ -94,8 +94,13 @@ def build(out):
             sys.exit(f"test build: {name} has no module imports to stamp")
         if name == "app.js":
             js = must(js, 'const STORE = "whereToGo.v1";', 'const STORE = "whereToGo-test.v1";', "storage key")
+            # The region verdict is per build too: a test-site verdict must not suppress the live gate.
+            js = must(js, 'const REGION_KEY = "whereToGo.region.v1";',
+                      'const REGION_KEY = "whereToGo-test.region.v1";', "region key")
             keys = set(re.findall(r'"(whereToGo[\w.-]*)"', js))
-            unknown = sorted(k for k in keys if k != "whereToGo-test.v1")
+            # Anything still named for the live build would share state with it; every key has to
+            # have been rewritten to its -test form.
+            unknown = sorted(k for k in keys if not k.startswith("whereToGo-test."))
             if unknown:
                 sys.exit("test build: decide whether these keys are shared or kept apart: " + ", ".join(unknown))
         (out / name).write_text(js, encoding="utf-8")

@@ -153,7 +153,7 @@ const LANGS = [
 const SEED = [
   { id: "home", name: { en: "Home", "zh-Hans": "家" }, glyph: "🏠", address: "" },
   { id: "doctor", name: { en: "Family doctor", "zh-Hans": "家庭医生" }, glyph: "🧑‍⚕️", address: "" },
-  { id: "market", name: { en: "Market", "zh-Hans": "市场" }, glyph: "🛒", address: "" },
+  { id: "market", name: { en: "Supermarket", "zh-Hans": "超市" }, glyph: "🛒", address: "" },
   { id: "daughter", name: { en: "Daughter's", "zh-Hans": "女儿家" }, glyph: "👨‍👩‍👧", address: "" },
   { id: "school", name: { en: "School", "zh-Hans": "学校" }, glyph: "🏫", address: "" },
   { id: "park", name: { en: "Park", "zh-Hans": "公园" }, glyph: "🌳", address: "" },
@@ -171,12 +171,18 @@ const SEED_ADDRESSES = {
 };
 
 // Bumped when a preset is added, so an existing set of places picks it up without a wipe.
-const SEED_VERSION = 5;
+const SEED_VERSION = 6;
 
 /** Add presets introduced since this browser's places were saved, keeping tile order. */
 /* Presets that were renamed after they shipped. Only a preset nobody touched is rewritten: the old
  * glyph AND the old name have to match, so a helper's own "Dr Chan" is left alone. */
 const RENAMED = [
+  {
+    // 市场 became 超市: the older word reads as a wet market to this audience.
+    id: "market",
+    was: { glyph: "🛒", names: ["市场", "市場", "Market"] },
+    now: { name: { en: "Supermarket", "zh-Hans": "超市" }, glyph: "🛒" },
+  },
   {
     id: "doctor",
     was: { glyph: "🏥", names: ["医生", "醫生", "Doctor"] },
@@ -916,7 +922,7 @@ function gateNeedsGesture(c) {
 }
 
 /* What the last region check concluded, so a launch does not pay for the same answer twice. */
-const REGION_KEY = "whereToGo.region.v1";
+const REGION_KEY = "whereToGo.region.v1";   // rewritten for the test build, like STORE
 function regionVerdict() {
   try { return localStorage.getItem(REGION_KEY) || ""; } catch { return ""; }
 }
