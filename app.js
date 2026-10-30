@@ -134,6 +134,8 @@ const COPY = {
       "Tap Add to confirm.",
     ],
     homeNote: "Once it is on the home screen, one tap opens it.",
+    moveTile: "Move",
+    movedTo: (name, n) => `${name} is now number ${n}.`,
     sizeLabel: "Text size",
     sizes: { sm: "Small", md: "Medium", lg: "Large", xl: "Extra large" },
   },
@@ -291,6 +293,8 @@ const COPY = {
       "再点一次「添加」。",
     ],
     homeNote: "放到主屏幕后，从桌面一下点开。",
+    moveTile: "移动位置",
+    movedTo: (name, n) => `「${name}」已移到第 ${n} 位。`,
     sizeLabel: "字体大小",
     sizes: { sm: "小", md: "中", lg: "大", xl: "特大" },
   },
@@ -514,6 +518,7 @@ const el = {
   gateSkip: $("gateSkip"),
   gear: $("settingsBtn"),
   tiles: $("tiles"),
+  orderStatus: $("orderStatus"),
   sheet: $("sheet"),
   sheetTitle: $("sheetTitle"),
   destAddr: $("destAddr"),
@@ -579,6 +584,7 @@ function render() {
 function tile(place) {
   const li = document.createElement("li");
   li.className = "tile-wrap";
+  li.dataset.id = place.id;
 
   const b = document.createElement("button");
   b.type = "button";
@@ -595,6 +601,15 @@ function tile(place) {
   name.textContent = nameOf(place);
 
   b.append(face, name);
+
+  /* A grip beside the tile, not inside it: a button inside a button is invalid, and the grip is the only
+   * surface that drags, so a tap on the tile still opens the place (Trix asked for reordering). */
+  const grip = document.createElement("button");
+  grip.type = "button";
+  grip.className = "tile-grip";
+  grip.setAttribute("aria-label", `${t().moveTile}: ${nameOf(place)}`);
+  grip.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
+
   b.addEventListener("click", () => {
     // Nothing to answer with yet: sending someone to a card that says 请先填地址 is a dead end, so
     // the tap opens the place itself and the address field is right there to fill in.
@@ -607,14 +622,100 @@ function tile(place) {
     if (!place.coord || drifted) return openPlace(place);
     openAnswer(place);
   });
-  li.append(b);
+  li.append(b, grip);
+  attachReorder(li, grip, place);
   return li;
+}
+
+/* ---------- reordering the tiles ----------
+ * Trix: drag a place to rearrange the grid. The order *is* state.places, so a drop is a splice plus a
+ * save and the grid is rebuilt from it. The grip is the drag surface rather than the tile itself: a tap
+ * on the tile must still open the place, and on a phone the tile body stays scrollable because the grip
+ * is the only element with touch-action: none. Arrow keys do the same job from the keyboard, because a
+ * drag is the one interaction this audience can least be expected to perform.
+ */
+
+function nearestTile(x, y, skip) {
+  let best = null;
+  let bestD = Infinity;
+  for (const w of el.tiles.querySelectorAll(".tile-wrap:not([data-add])")) {
+    if (w === skip) continue;
+    const r = w.getBoundingClientRect();
+    const d = (x - (r.left + r.width / 2)) ** 2 + (y - (r.top + r.height / 2)) ** 2;
+    if (d < bestD) { bestD = d; best = w; }
+  }
+  return best;
+}
+
+function commitOrder(moved) {
+  const ids = [...el.tiles.querySelectorAll(".tile-wrap[data-id]")].map((w) => w.dataset.id);
+  const byId = new Map(state.places.map((p) => [p.id, p]));
+  const next = ids.map((id) => byId.get(id)).filter(Boolean);
+  for (const p of state.places) if (!ids.includes(p.id)) next.push(p);   // never lose a place to a drag
+  const changed = next.some((p, i) => p !== state.places[i]);
+  state.places = next;
+  if (changed) save();
+  render();
+  const at = next.indexOf(moved) + 1;
+  el.orderStatus.textContent = t().movedTo(nameOf(moved), at);
+}
+
+function attachReorder(li, grip, place) {
+  let dragging = false;
+
+  grip.addEventListener("pointerdown", (e) => {
+    if (e.button) return;                       // left button or touch only
+    e.preventDefault();
+    // A synthetic event has no real pointer to capture; a real one always does.
+    try { grip.setPointerCapture(e.pointerId); } catch { /* no pointer to capture */ }
+    dragging = true;
+    li.classList.add("dragging");
+    document.body.classList.add("reordering");
+  });
+
+  grip.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const target = nearestTile(e.clientX, e.clientY, li);
+    if (!target) return;
+    const r = target.getBoundingClientRect();
+    const before = e.clientY < r.top + r.height / 2 ||
+      (e.clientY <= r.bottom && e.clientX < r.left + r.width / 2);
+    el.tiles.insertBefore(li, before ? target : target.nextSibling);
+  });
+
+  const drop = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    try { grip.releasePointerCapture(e.pointerId); } catch { /* nothing captured */ }
+    li.classList.remove("dragging");
+    document.body.classList.remove("reordering");
+    commitOrder(place);
+  };
+  grip.addEventListener("pointerup", drop);
+  grip.addEventListener("pointercancel", drop);
+
+  grip.addEventListener("keydown", (e) => {
+    const step = e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1
+      : e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const from = state.places.indexOf(place);
+    const to = from + step;
+    if (from < 0 || to < 0 || to >= state.places.length) return;
+    state.places.splice(to, 0, state.places.splice(from, 1)[0]);
+    save();
+    render();
+    el.tiles.querySelector(`.tile-wrap[data-id="${place.id}"] .tile-grip`)?.focus();
+    el.orderStatus.textContent = t().movedTo(nameOf(place), to + 1);
+  });
 }
 
 function addTile() {
   const c = t();
   const li = document.createElement("li");
   li.className = "tile-wrap";
+  li.dataset.add = "1";
   const b = document.createElement("button");
   b.type = "button";
   b.className = "tile tile-add";
