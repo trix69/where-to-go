@@ -220,7 +220,7 @@ body {
 /* The destination, spelled out: the saved address, plus the name the coordinates came from. */
 .dest {
   margin: -6px 0 2px;
-  font-size: var(--type);
+  font-size: max(1.3rem, 20px);   /* px floor: 小 must not take the saved address under 20 px (R41.2) */
   line-height: 1.3;
   color: var(--ink);
 }
@@ -243,7 +243,9 @@ body {
 
 .stamp {
   margin: 0 0 18px;
-  font-size: 0.95rem;
+  /* The one sentence that says the numbers are not real was the smallest text in the app. Floored at
+     the same 20 px as the body it annotates (R41.2). */
+  font-size: max(0.95rem, 20px);
   color: var(--ink-soft);
 }
 .stamp[data-kind="demo"] { color: var(--danger); font-weight: 700; letter-spacing: 0.06em; }
@@ -260,7 +262,7 @@ body {
   background: var(--accent);
   color: var(--accent-ink);
   font: inherit;
-  font-size: 1.25rem;
+  font-size: max(1.25rem, 20px);   /* px floor: 小 must not take the primary action under 20 px (R41.2) */
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
@@ -282,7 +284,7 @@ body {
   background: transparent;
   color: var(--accent);
   font: inherit;
-  font-size: 1.15rem;
+  font-size: max(1.15rem, 20px);
   font-weight: 700;
   cursor: pointer;
 }
@@ -333,7 +335,8 @@ body {
   background: transparent;
   color: var(--ink-soft);
   font: inherit;
-  font-size: 1.1rem;
+  /* px floor, deliberately: 小 multiplies rems, and these lines were already at the 20 px floor (R41.2) */
+  font-size: max(1.1rem, 20px);
   cursor: pointer;
 }
 
@@ -671,6 +674,15 @@ body {
    back to Settings when it closes. */
 #install { align-items: center; padding: 24px; }
 #install .panel { border-radius: 20px; }
+/* The answer's actions stay on screen and the answer itself scrolls: at 特大 on a 320x568 phone the
+   打开地图 button sat 171 px below the fold, and the panel's bottom edge is the screen edge, so nothing
+   suggested anything was under it (R41.1). Same treatment one sheet over in Settings (R41.4). */
+#sheet .panel, #manage .panel { display: flex; flex-direction: column; }
+#sheet .sheet-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+#sheet .sheet-head, #sheet .go, #sheet .retry, #sheet .back { flex: 0 0 auto; }
+#manage .sheet-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+#manage .sheet-title, #manage .go { flex: 0 0 auto; }
+
 /* The steps scroll, 完成 does not: on a 320x568 phone the panel hit its 88vh cap and 完成 started 4 px
    below the fold, at the end of a four-step list with no scroll indicator (R38.5). */
 #install .panel { display: flex; flex-direction: column; }

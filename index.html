@@ -50,9 +50,11 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
-      <p class="dest" id="destAddr" hidden></p>
-      <p class="summary" id="summary" role="status" aria-live="polite"></p>
-      <p class="stamp" id="stamp" hidden></p>
+      <div class="sheet-body">
+        <p class="dest" id="destAddr" hidden></p>
+        <p class="summary" id="summary" role="status" aria-live="polite"></p>
+        <p class="stamp" id="stamp" hidden></p>
+      </div>
       <a class="go" id="goBtn" href="#" rel="noopener">Open in Maps</a>
       <button class="retry" id="retryLoc" type="button" hidden>Use my location</button>
       <button class="back" id="closeSheet" type="button">Back</button>
@@ -63,6 +65,7 @@
   <section class="sheet" id="manage" role="dialog" aria-modal="true" hidden aria-labelledby="manageTitle">
     <div class="panel">
       <h2 class="sheet-title" id="manageTitle" tabindex="-1">Settings</h2>
+      <div class="sheet-body">
       <p class="warn" id="storageWarn" hidden></p>
       <p class="seg-label" id="langLabel">Language</p>
       <div class="seg" id="langRow" role="group" aria-labelledby="langLabel"></div>
@@ -70,8 +73,10 @@
       <div class="seg" id="themeRow" role="group" aria-labelledby="themeLabel"></div>
       <p class="seg-label" id="sizeLabel">Text size</p>
       <div class="seg" id="sizeRow" role="group" aria-labelledby="sizeLabel"></div>
+      <p class="sr-only" id="sizeStatus" role="status"></p>
       <button type="button" class="row" id="installBtn">Add to home screen</button>
       <button type="button" class="ver" id="verBtn"><span><span id="verLabel">Version</span> <span id="appVersion">1.0</span></span> · <span id="verMsg">Check for updates</span></button>
+      </div>
       <button class="go" id="closeManage" type="button">Done</button>
     </div>
   </section>

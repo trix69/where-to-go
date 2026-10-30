@@ -56,8 +56,11 @@ const COPY = {
       const departs = t.departISO ? clock(t.departISO) : "";
       const service = [`${head}${way}`, platform, `in ${t.waitMin} min`, departs ? `departs ${departs}` : ""]
         .filter(Boolean).join(" · ");
-      const stopAt = t.alightISO ? clock(t.alightISO) : "";
-      const doorAt = arrive && arrive !== stopAt ? clockAfter(t.alightISO || t.departISO, t.arriveISO) : "";
+      const stopRaw = t.alightISO ? clock(t.alightISO) : "";
+      const stopAt = t.alightISO ? clockAfter(t.departISO, t.alightISO) : "";
+      const doorAt = arrive && clock(t.arriveISO) !== stopRaw
+        ? clockAfter(t.alightISO || t.departISO, t.arriveISO)
+        : "";
       // The change notice carries the door clock on a journey with a change, so the second time is not
       // left standing beside the first vehicle's stop (R37.2).
       const change = t.changes > 0
@@ -177,14 +180,19 @@ const COPY = {
       const service = [`${line}${way}`, platform,
         `${t.waitMin}分钟后${verb}${departs ? `（${departs}）` : ""}`].filter(Boolean).join(" · ");
 
-      const stopAt = t.alightISO ? clock(t.alightISO) : "";
+      // The first clock that crosses midnight carries 次日; a later clock on the same day needs nothing
+      // (R37.5). The raw clocks decide whether the stop and the door are the same instant.
+      const stopRaw = t.alightISO ? clock(t.alightISO) : "";
+      const stopAt = t.alightISO ? clockAfter(t.departISO, t.alightISO) : "";
       // 在…下车 is the natural word order; 到X下车 reads like a typo to a Chinese reader.
       const ride = `从${t.board}上车，坐${t.stops}站，` +
         (stopAt ? `${stopAt}在${t.alight}下车。` : `在${t.alight}下车。`);
 
       /* One clock when the ride ends at the door (R37.3): stopAt and arrive are then the same instant,
        * and printing both eight words apart reads as a mistake. */
-      const doorAt = arrive && arrive !== stopAt ? clockAfter(t.alightISO || t.departISO, t.arriveISO) : "";
+      const doorAt = arrive && clock(t.arriveISO) !== stopRaw
+        ? clockAfter(t.alightISO || t.departISO, t.arriveISO)
+        : "";
       const walkLine = doorAt && t.changes === 0 && t.walkFromStopMin > 0
         ? `再走${t.walkFromStopMin}分钟，${doorAt}到。`
         : "";
@@ -474,6 +482,7 @@ const el = {
   themeRow: $("themeRow"),
   themeLabel: $("themeLabel"),
   sizeRow: $("sizeRow"),
+  sizeStatus: $("sizeStatus"),
   sizeLabel: $("sizeLabel"),
   install: $("install"),
   installTitle: $("installTitle"),
@@ -916,7 +925,17 @@ function openManage() {
       b.textContent = c.sizes[id];
       b.setAttribute("aria-pressed", String((state.fontSize || "md") === id));
       b.setAttribute("aria-label", `${c.sizeLabel}: ${c.sizes[id]}`);
-      b.addEventListener("click", () => { state.fontSize = id; applySize(); save(); openManage(); });
+      b.addEventListener("click", () => {
+        state.fontSize = id;
+        applySize();
+        save();
+        // In place: rebuilding the row destroyed the focused button and threw a keyboard or VoiceOver
+        // user back to the dialog title, with nothing announced (R41.3).
+        for (const [i, btn] of [...el.sizeRow.querySelectorAll("button")].entries()) {
+          btn.setAttribute("aria-pressed", String(SIZES[i] === id));
+        }
+        el.sizeStatus.textContent = `${c.sizeLabel}: ${c.sizes[id]}`;
+      });
       return b;
     }),
   );
