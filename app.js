@@ -125,7 +125,7 @@ const LANGS = [
 
 const SEED = [
   { id: "home", name: { en: "Home", "zh-Hans": "家" }, glyph: "🏠", address: "12 Crown Street, Sydney NSW 2000" },
-  { id: "doctor", name: { en: "Doctor", "zh-Hans": "医生" }, glyph: "🏥", address: "Royal Prince Alfred Hospital, Missenden Road, Camperdown NSW 2050" },
+  { id: "doctor", name: { en: "Family doctor", "zh-Hans": "家庭医生" }, glyph: "🧑‍⚕️", address: "Royal Prince Alfred Hospital, Missenden Road, Camperdown NSW 2050" },
   { id: "market", name: { en: "Market", "zh-Hans": "市场" }, glyph: "🛒", address: "Paddy's Markets, 9-13 Hay Street, Haymarket NSW 2000" },
   { id: "daughter", name: { en: "Daughter's", "zh-Hans": "女儿家" }, glyph: "👨‍👩‍👧", address: "8 Belmore Road, Randwick NSW 2031" },
   { id: "school", name: { en: "School", "zh-Hans": "学校" }, glyph: "🏫", address: "Randwick Public School, Cowper Street, Randwick NSW 2031" },
@@ -133,11 +133,33 @@ const SEED = [
 ];
 
 // Bumped when a preset is added, so an existing set of places picks it up without a wipe.
-const SEED_VERSION = 2;
+const SEED_VERSION = 3;
 
 /** Add presets introduced since this browser's places were saved, keeping tile order. */
+/* Presets that were renamed after they shipped. Only a preset nobody touched is rewritten: the old
+ * glyph AND the old name have to match, so a helper's own "Dr Chan" is left alone. */
+const RENAMED = [
+  {
+    id: "doctor",
+    was: { glyph: "🏥", names: ["医生", "醫生", "Doctor"] },
+    now: { name: { en: "Family doctor", "zh-Hans": "家庭医生" }, glyph: "🧑‍⚕️" },
+  },
+];
+
+function renamePresets(stored) {
+  for (const r of RENAMED) {
+    const place = stored.places.find((p) => p.id === r.id);
+    if (!place || place.glyph !== r.was.glyph) continue;
+    const names = Object.values(place.name || {});
+    if (!names.some((n) => r.was.names.includes(n))) continue;
+    place.name = { ...place.name, ...r.now.name };
+    place.glyph = r.now.glyph;
+  }
+}
+
 function ensureDefaults(stored) {
   if ((stored.seedVersion || 1) >= SEED_VERSION) return stored;
+  renamePresets(stored);
   const have = new Set(stored.places.map((p) => p.id));
   for (const p of SEED) if (!have.has(p.id)) stored.places.push({ ...p });
   // Presets keep their declared order; anything the helper added stays after them.
