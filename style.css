@@ -488,13 +488,15 @@ body {
 
 .icons {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  /* Five columns of 56 px: the 24 targets were the smallest things in the app at 48 px (R22.1), and
+     six 56 px columns do not fit a 336 px panel. */
+  grid-template-columns: repeat(5, minmax(56px, 1fr));
   gap: 8px;
   margin: 0 0 16px;
 }
 .icon {
   aspect-ratio: 1;
-  min-height: 48px;
+  min-height: 56px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -527,7 +529,9 @@ body {
   z-index: 5;
   left: 0;
   right: 0;
-  top: calc(100% + 6px);
+  /* Upward: the address field is the last field before 删除 / 完成, and a list that opens downward
+     covers both buttons exactly when the helper needs them. */
+  bottom: calc(100% + 6px);
   max-height: 46vh;
   overflow-y: auto;
   margin: 0;

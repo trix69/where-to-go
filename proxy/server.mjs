@@ -91,6 +91,9 @@ const server = http.createServer(async (req, res) => {
       ok: true, provider: "sample", mode: "bus", line: "343",
       waitMin: 4, durationMin: 22, rideMin: 18, walkToStopMin: 3, realtime: false, changes: 0,
       departISO: new Date(Date.now() + 4 * 60000).toISOString(),
+      // Without this the sample card lost its "arrives at" clause and demoed a sentence shape the app
+      // never produces (R19.1).
+      arriveISO: new Date(Date.now() + (4 + 18) * 60000).toISOString(),
     });
   }
   if (!KEY) return send(res, 503, { ok: false, error: "no-key" });

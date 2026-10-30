@@ -53,6 +53,9 @@ const COPY = {
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
     noMatches: "No match — try another spelling.",
+    searching: "Searching…",
+    mockNoSave: "Sample mode: addresses can't be saved here.",
+    repick: "Pick this address again to confirm it.",
     settingsTitle: "Settings",
     language: "Language",
     appearance: "Appearance",
@@ -119,6 +122,9 @@ const COPY = {
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
     noMatches: "没有找到，请换个写法。",
+    searching: "正在查找…",
+    mockNoSave: "示例模式：这里无法保存地址。",
+    repick: "这个地址需要重新选一次。",
     settingsTitle: "设置",
     language: "语言",
     appearance: "外观",
@@ -246,6 +252,9 @@ function load() {
       const s = JSON.parse(raw);
       if (s && Array.isArray(s.places)) {
         if (!COPY[s.lang]) s.lang = DEFAULT_LANG;   // a locale we dropped (zh-Hant) or a typo
+        // `suspect` was written by builds before R26 and nothing reads it now; left in place it would
+        // keep an old place opening its editor for ever, with no line saying why.
+        for (const place of s.places) delete place.suspect;
         return ensureDefaults(s);
       }
     }
@@ -399,11 +408,13 @@ function tile(place) {
   b.addEventListener("click", () => {
     // Nothing to answer with yet: sending someone to a card that says 请先填地址 is a dead end, so
     // the tap opens the place itself and the address field is right there to fill in.
-    if (!place.address && !place.coord) return openPlace(place);
-    // Flagged as a bad match when it was set up: ask for the address to be fixed instead of answering
-    // from a coordinate nobody confirmed (R6.3, R7.1, R10.1).
+    // Pick-only saving (R18) means a confirmed place always has a coordinate. An address without one
+    // is data from a build before that rule — text that would be geocoded at travel time and answered
+    // silently from whatever stop_finder chose (R18.1). So it opens its editor instead of answering.
+    // A stored coordinate is the only thing that makes a place answerable. `suspect` is gone (R26),
+    // and a place whose address text and matched name disagree predates pick-only saving (R18.1).
     const drifted = place.resolvedName && place.address && place.resolvedName !== place.address;
-    if (place.suspect || drifted) return openPlace(place);
+    if (!place.coord || drifted) return openPlace(place);
     openAnswer(place);
   });
   li.append(b);
@@ -461,7 +472,7 @@ function inNSW({ lat, lng }) {
 
 let lookSeq = 0;
 let currentPlace = null;
-let location = null; // {coord} once granted; never cache a failure, so "Use my location" can retry
+let location = null; // {coord, at} once granted; never cache a failure, so "Use my location" can retry
 
 /**
  * Ask the device where it is. A failure is a state to report, not a reason to invent an origin:
@@ -499,7 +510,9 @@ function askOnce(maxAge) {
  */
 async function askLocation(opts = {}) {
   const maxAge = opts.maxAge == null ? 60000 : opts.maxAge;
-  if (location && location.coord && maxAge > 0) return location;
+  // The stamp is the point: without it a launch-time fix was reused for the whole page session, so a
+  // trip asked 4 km away was still computed from where the phone was when the app opened (R16.1).
+  if (location && location.coord && maxAge > 0 && Date.now() - (location.at || 0) < maxAge) return location;
   if (!navigator.geolocation) return { error: "unavailable" };
 
   let res = await askOnce(maxAge);
@@ -507,6 +520,7 @@ async function askLocation(opts = {}) {
     await new Promise((r) => setTimeout(r, 900));
     res = await askOnce(maxAge);
   }
+  if (res.coord) res = { coord: res.coord, at: Date.now() };
   if (res.error !== "denied") return res;
 
   /* Chrome answers PERMISSION_DENIED when the *operating system* has location switched off, even
@@ -710,12 +724,34 @@ function openPlace(place) {
   el.placeDel.hidden = false;             // on a draft it discards, which is the only way out besides 完成
   el.placeWarn.hidden = true;
   el.placeNote.hidden = true;
+  const clashAtOpen = duplicateNameOf(nameOf(place), place.id);
+  if (clashAtOpen) {
+    // Old data can hold two places with one name; 完成 is disabled from the first frame, so the reason
+    // has to be on screen from the first frame too (R20.1).
+    el.placeNote.hidden = false;
+    el.placeNote.textContent = c.dupName(norm(nameOf(place)));
+  }
   el.placeDone.textContent = c.done;
   el.placeDone.disabled = false;
   closeList();
   renderIcons();
   refreshDone();
   show("place");
+
+  /* Two states where the sheet has to explain itself:
+   * - no provider (mock/sample): nothing can be saved, and the field would refuse every keystroke
+   *   silently (R18.2);
+   * - a stored address with no coordinate: the list is opened with that text so the helper can pick the
+   *   real place in one tap (R18.1). */
+  if (usingMock()) {
+    el.placeNote.hidden = false;
+    el.placeNote.textContent = c.mockNoSave;
+  } else if (place.address && (!place.coord || place.resolvedName !== place.address)) {
+    // Text from an older build: the list is opened on it, and the note says why 完成 is disabled.
+    el.placeNote.hidden = false;
+    el.placeNote.textContent = c.repick;
+    scheduleSearch();
+  }
 }
 
 /* ---------- the address list ----------
@@ -867,8 +903,18 @@ function scheduleSearch() {
     refreshDone();
     return;
   }
+  // The field looks dead for seconds while stop_finder thinks; one row says it is working (R18.4).
+  el.addrList.replaceChildren();
+  const waiting = document.createElement("p");
+  waiting.className = "a-empty";
+  waiting.textContent = t().searching;
+  showRow(waiting);
+
   searchTimer = setTimeout(async () => {
-    const found = await searchAddresses(text);
+    let found = [];
+    try {
+      found = await searchAddresses(text);
+    } catch { /* a timeout is "no match", not an exception on screen */ }
     if (seq !== searchSeq || !editing) return;              // a newer keystroke or another place
     // Only candidates that share something with what was typed. stop_finder answers almost anything
     // ("12 Crown Street" → a cafe called "Where Ya Bean?" by word shape), and a list of plausible-
@@ -1131,7 +1177,7 @@ async function boot() {
   el.gateMsg.textContent = c.gateChecking;
   const loc = await askLocation({ maxAge: 0 });
   if (loc.coord) {
-    location = loc;
+    location = { coord: loc.coord, at: Date.now() };
     if (inNSW(loc.coord)) {
       setRegionVerdict("in");
       return closeGate();
@@ -1151,7 +1197,7 @@ el.gateAllow.addEventListener("click", async () => {
   el.gateSkip.hidden = true;
   const loc = await askLocation({ maxAge: 0 });
   if (loc.coord) {
-    location = loc;
+    location = { coord: loc.coord, at: Date.now() };
     if (inNSW(loc.coord)) {
       setRegionVerdict("in");
       return closeGate();
