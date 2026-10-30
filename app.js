@@ -93,6 +93,23 @@ const COPY = {
     updating: (v) => `Updating to ${v}…`,
     cantCheck: "Can't check here",
     offline: "No internet — can't check",
+    addHome: "Add to home screen",
+    device: "Phone",
+    phoneIos: "iPhone / iPad",
+    phoneAndroid: "Android",
+    stepsIos: [
+      "Open this page in Safari.",
+      "Tap the Share button.",
+      "Scroll down and tap Add to Home Screen.",
+      "Tap Add.",
+    ],
+    stepsAndroid: [
+      "Open this page in Chrome.",
+      "Tap the three dots at the top right.",
+      "Tap Add to Home screen, or Install app.",
+      "Tap Add to confirm.",
+    ],
+    homeNote: "Once it is on the home screen, one tap opens it.",
   },
   "zh-Hans": {
     ask: "想去哪儿?",
@@ -192,6 +209,23 @@ const COPY = {
     updating: (v) => `正在更新到 ${v}…`,
     cantCheck: "这里查不到",
     offline: "没有网络，无法检查",
+    addHome: "添加到主屏幕",
+    device: "手机",
+    phoneIos: "iPhone / iPad",
+    phoneAndroid: "安卓",
+    stepsIos: [
+      "用 Safari 打开这个网页。",
+      "点下面的「分享」按钮。",
+      "往下滑，点「添加到主屏幕」。",
+      "点右上角的「添加」。",
+    ],
+    stepsAndroid: [
+      "用 Chrome 打开这个网页。",
+      "点右上角的三个点。",
+      "点「添加到主屏幕」或「安装应用」。",
+      "再点一次「添加」。",
+    ],
+    homeNote: "放到主屏幕后，从桌面一下点开。",
   },
 };
 
@@ -404,6 +438,15 @@ const el = {
   langLabel: $("langLabel"),
   themeRow: $("themeRow"),
   themeLabel: $("themeLabel"),
+  install: $("install"),
+  installTitle: $("installTitle"),
+  installBtn: $("installBtn"),
+  installDone: $("installDone"),
+  installNote: $("installNote"),
+  devRow: $("devRow"),
+  devLabel: $("devLabel"),
+  stepsIos: $("stepsIos"),
+  stepsAndroid: $("stepsAndroid"),
   iconLabel: $("iconLabel"),
   place: $("place"),
   placeTitle: $("placeTitle"),
@@ -492,6 +535,7 @@ function show(which) {
   el.sheet.hidden = which !== "answer";
   el.manage.hidden = which !== "manage";
   el.place.hidden = which !== "place";
+  el.install.hidden = which !== "install";
   document.body.style.overflow = which ? "hidden" : "";
 }
 
@@ -694,6 +738,66 @@ async function openAnswer(place, opts = {}) {
   if (!refresh) startRefresh(place);
 }
 
+/* ---------- add to the home screen ----------
+ * The shape is Violin Toolkit's install sheet — pick the phone, then numbered steps with the button to
+ * look for drawn beside the step — without its offline promise: this app has no offline mode, and the
+ * reason to install is that a person taps one icon on their own phone instead of finding the browser
+ * first. The phone is guessed from the user agent and can be overridden, because the person setting the
+ * app up is often on a different phone from the one it will run on.
+ */
+
+const ICON_SHARE =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4l4 4"/>' +
+  '<path d="M7 10H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/></svg>';
+const ICON_MENU =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.4"/>' +
+  '<circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>';
+const ICON_ADD =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/>' +
+  '<path d="M12 8.5v7M8.5 12h7"/></svg>';
+
+let device = /android/i.test(navigator.userAgent) ? "android" : "ios";
+
+function fillSteps(ol, lines, icons) {
+  ol.replaceChildren(...lines.map((line, i) => {
+    const li = document.createElement("li");
+    const text = document.createElement("span");
+    text.textContent = line;
+    li.append(text);
+    if (icons[i]) {
+      const mark = document.createElement("span");
+      mark.innerHTML = icons[i];
+      li.append(mark.firstElementChild);
+    }
+    return li;
+  }));
+}
+
+function openInstall() {
+  const c = t();
+  el.installTitle.textContent = c.addHome;
+  el.installNote.textContent = c.homeNote;
+  el.installDone.textContent = c.done;
+  el.devLabel.textContent = c.device;
+  el.devRow.replaceChildren(
+    ...[[ "ios", c.phoneIos ], [ "android", c.phoneAndroid ]].map(([id, label]) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.setAttribute("aria-pressed", String(device === id));
+      b.addEventListener("click", () => { device = id; openInstall(); });
+      return b;
+    }),
+  );
+  // The icon drawn beside a step is the button the step tells them to tap, so it sits on the step
+  // that names it and nowhere else.
+  fillSteps(el.stepsIos, c.stepsIos, [null, ICON_SHARE, ICON_ADD, null]);
+  fillSteps(el.stepsAndroid, c.stepsAndroid, [null, ICON_MENU, ICON_ADD, null]);
+  el.stepsIos.hidden = device !== "ios";
+  el.stepsAndroid.hidden = device !== "android";
+  show("install");
+}
+
 /* ---------- settings: language and version only ---------- */
 
 function openManage() {
@@ -704,6 +808,7 @@ function openManage() {
   el.storageWarn.hidden = storageOk;
   el.storageWarn.textContent = c.storageWarn;
   el.verMsg.textContent = c.checkUpdates;
+  el.installBtn.textContent = c.addHome;
 
   el.langLabel.textContent = c.language;
   el.themeLabel.textContent = c.appearance;
@@ -1047,6 +1152,8 @@ el.retryLoc.addEventListener("click", () => {
   if (currentPlace) openAnswer(currentPlace);
 });
 el.gear.addEventListener("click", () => { stopRefresh(); openManage(); });
+el.installBtn.addEventListener("click", () => openInstall());
+el.installDone.addEventListener("click", () => openManage());
 
 /* ---------- the place overlay: name, icon, address, delete ---------- */
 
@@ -1189,10 +1296,13 @@ el.verBtn.addEventListener("click", async () => {
 
 el.sheet.addEventListener("click", (e) => { if (e.target === el.sheet) { show(null); stopRefresh(); } });
 el.manage.addEventListener("click", (e) => { if (e.target === el.manage) show(null); });
+el.install.addEventListener("click", (e) => { if (e.target === el.install) openManage(); });
 
 document.addEventListener("keydown", (e) => {
   // The place overlay is deliberately not in this list: only 删除 or 完成 leaves it.
-  if (e.key === "Escape" && (!el.sheet.hidden || !el.manage.hidden)) {
+  if (e.key !== "Escape") return;
+  if (!el.install.hidden) { openManage(); return; }   // one step back, not all the way out
+  if (!el.sheet.hidden || !el.manage.hidden) {
     show(null);
     stopRefresh();
   }

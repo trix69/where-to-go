@@ -65,8 +65,25 @@
       <div class="seg" id="langRow" role="group" aria-labelledby="langLabel"></div>
       <p class="seg-label" id="themeLabel">Appearance</p>
       <div class="seg" id="themeRow" role="group" aria-labelledby="themeLabel"></div>
+      <button type="button" class="ver" id="installBtn">Add to home screen</button>
       <button type="button" class="ver" id="verBtn"><span><span id="verLabel">Version</span> <span id="appVersion">0.1</span></span> · <span id="verMsg">Check for updates</span></button>
       <button class="back" id="closeManage" type="button">Done</button>
+    </div>
+  </section>
+
+  <!-- Add to the home screen. Not an offline story — this app has no offline mode — the point is that
+       a person taps one icon on their own phone instead of finding the browser first. Same shape as
+       Violin Toolkit's install sheet: pick the phone, then three numbered steps with the button they
+       are looking for drawn beside the step. -->
+  <section class="sheet" id="install" hidden aria-labelledby="installTitle">
+    <div class="panel">
+      <h2 class="sheet-title" id="installTitle">Add to home screen</h2>
+      <p class="sr-only" id="devLabel">Phone</p>
+      <div class="seg" id="devRow" role="group" aria-labelledby="devLabel"></div>
+      <ol class="steps" id="stepsIos"></ol>
+      <ol class="steps" id="stepsAndroid"></ol>
+      <p class="steps-note" id="installNote">Once it is on the home screen, one tap opens it.</p>
+      <button class="back" id="installDone" type="button">Done</button>
     </div>
   </section>
 

@@ -465,6 +465,49 @@ body {
   font-weight: 600;
 }
 .seg-label { margin: 0 0 8px; font-size: var(--type); color: var(--ink-soft); }
+/* Home-screen steps: a number, the words, and the button to look for drawn at the end. The number is
+   what makes a list of four sentences read as a sequence for someone who is not sure where they are. */
+.steps {
+  counter-reset: step;
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.steps[hidden] { display: none; }   /* display:grid would otherwise beat the hidden attribute */
+.steps li {
+  counter-increment: step;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  font-size: var(--type);
+  line-height: 1.35;
+}
+.steps li::before {
+  content: counter(step);
+  flex: 0 0 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--line);
+  color: var(--ink);
+  font-size: 1.05rem;
+  display: grid;
+  place-items: center;
+}
+.steps svg {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.steps-note { margin: 0 0 4px; font-size: var(--type); color: var(--ink-soft); }
 /* The pencil sits with the destination it edits: on the answer, not on every tile. A tile stays a
    single tap, which is the whole promise of the app. */
 .sheet-head { display: flex; align-items: center; gap: 8px; }
@@ -576,6 +619,11 @@ body {
    middle of the screen, where the eye already is. */
 #manage { align-items: center; padding: 24px; }
 #manage .panel { border-radius: 20px; }
+/* The install steps are a dialog too, not a bottom sheet: it is opened from Settings, and it comes
+   back to Settings when it closes. */
+#install { align-items: center; padding: 24px; }
+#install .panel { border-radius: 20px; }
+
 
 /* Labels that screen readers need and eyes do not: the sheet title is the name, the icon grid is
    icons, and the address field says 地址 until something is picked. */
