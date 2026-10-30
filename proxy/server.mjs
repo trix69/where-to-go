@@ -9,7 +9,7 @@ import http from "node:http";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { fetchTrip, resolvePlace, resolvePlaces } from "./core.mjs";
+import { fetchTrip, resolvePlace, resolvePlaces, reversePlace } from "./core.mjs";
 
 const PORT = Number(process.env.PORT || 8802);
 const SAMPLE = process.argv.includes("--sample");
@@ -64,6 +64,16 @@ const server = http.createServer(async (req, res) => {
       ok: true, provider: "tfnsw", name: best.name, coord: best.coord, locality: best.locality,
       matches: rest.map((m) => ({ name: m.name, coord: m.coord, locality: m.locality })),
     });
+  }
+
+  // /reverse?coord=lng,lat — what is at this point (the map in the place editor).
+  if (url.pathname === "/reverse") {
+    const raw = (url.searchParams.get("coord") || "").trim();
+    const [lng, lat] = raw.split(",").map(Number);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return send(res, 400, { ok: false, error: "no-coord" });
+    const hit = await reversePlace({ coord: { lng, lat } });
+    if (!hit) return send(res, 200, { ok: false, error: "not-found" });
+    return send(res, 200, { ok: true, provider: "osm", ...hit });
   }
 
   if (url.pathname !== "/trip") return send(res, 404, { ok: false, error: "not-found" });

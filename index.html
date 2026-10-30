@@ -112,6 +112,30 @@
     </div>
   </section>
 
+  <!-- Where the address is chosen by pointing rather than spelling: the map moves, the pin does not, so
+       the thing being aimed at is always the middle of the screen. -->
+  <section class="sheet full" id="map" role="dialog" aria-modal="true" hidden aria-labelledby="mapTitle">
+    <div class="panel">
+      <h2 class="sheet-title" id="mapTitle" tabindex="-1">Pick on the map</h2>
+      <p class="map-hint" id="mapHint"></p>
+      <div class="map-wrap" id="mapWrap" tabindex="0" role="application"
+           aria-label="Map" aria-describedby="mapHint">
+        <div class="map-tiles" id="mapTiles"></div>
+        <div class="map-pin" aria-hidden="true">
+          <svg viewBox="0 0 32 44"><path d="M16 1C7.7 1 1 7.6 1 15.8 1 27 16 43 16 43s15-16 15-27.2C31 7.6 24.3 1 16 1z" fill="#c0392b" stroke="#fff" stroke-width="2"/><circle cx="16" cy="15.5" r="5.5" fill="#fff"/></svg>
+        </div>
+        <div class="map-zoom">
+          <button type="button" id="mapIn" aria-label="Zoom in">+</button>
+          <button type="button" id="mapOut" aria-label="Zoom out">−</button>
+        </div>
+        <a class="map-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a>
+      </div>
+      <p class="map-addr" id="mapAddr" role="status"></p>
+      <button class="go" id="mapUse" type="button">Use this spot</button>
+      <button class="back" id="mapBack" type="button">Back</button>
+    </div>
+  </section>
+
   <!-- The icon chooser: opened from the pencil beside the symbol, closes when one is picked. -->
   <section class="sheet picker" id="icons" role="dialog" aria-modal="true" hidden aria-labelledby="iconLabel">
     <div class="panel">
@@ -149,6 +173,14 @@
                role="combobox" aria-expanded="false" aria-controls="addrList" aria-autocomplete="list">
         <ul class="addr-list" id="addrList" role="listbox" aria-label="Addresses" hidden></ul>
       </div>
+      <!-- The other way to name an address: point at the door instead of spelling it. -->
+      <button class="mapbtn" id="placeMap" type="button">
+        <svg class="mapbtn-pin" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          <circle cx="12" cy="10" r="2.6" fill="currentColor"/>
+        </svg>
+        <span id="placeMapLabel">Pick on the map</span>
+      </button>
       <p class="warn" id="placeNote" hidden></p>
       <p class="warn" id="placeWarn" hidden></p>
       <button class="del" id="placeDel" type="button">Delete</button>

@@ -105,6 +105,76 @@ export async function resolvePlaces({ key, text, timeoutMs = 6000, limit = 3 }) 
     .map(({ h }) => h);
 }
 
+/**
+ * Reverse geocode: what is at this point?
+ *
+ * The map in the place editor puts a pin on a door, and the tile has to show a name a person
+ * recognises, not a pair of numbers.
+ *
+ * TfNSW cannot answer: its coord endpoint returns `{"locations":[]}` for every coordinate tried,
+ * including Central Station. Photon answers here but not from Cloudflare's egress (the Worker gets no
+ * result while curl from a home connection does), so this is Nominatim — OSM's own service, keyless,
+ * with a published usage policy of one request a second and an identifying agent, both of which the
+ * client already respects (one lookup per settled pin).
+ *
+ * Returns null rather than a made-up label: the pin remains usable with no address, because a
+ * confirmed place travels on its coordinate.
+ */
+const NOMINATIM = "https://nominatim.openstreetmap.org/reverse";
+
+export function buildReverseUrl(coord, lang = "en") {
+  const p = new URLSearchParams({
+    format: "jsonv2",
+    lat: Number(coord.lat).toFixed(6),
+    lon: Number(coord.lng).toFixed(6),
+    zoom: "18",                 // building level; the pin is a door, not a suburb
+    addressdetails: "1",
+    "accept-language": lang,
+  });
+  return `${NOMINATIM}?${p.toString()}`;
+}
+
+/**
+ * A line a person can read off: "12 Norton Street, Leichhardt" for a house, the road name when there
+ * is no number, the place's own name for a park or a station, and the suburb appended when it is not
+ * already in the name.
+ */
+export function labelFor(address = {}, name = "") {
+  const road = String(address.road || address.pedestrian || address.footway || "").trim();
+  const house = String(address.house_number || "").trim();
+  const street = road ? `${house ? `${house} ` : ""}${road}`.trim() : "";
+  const named = String(name || "").trim();
+  const place = String(address.amenity || address.shop || address.leisure || address.tourism || "").trim();
+  // A bus stop's name is "Norton St opp Leichhardt Public School"; the road is what a person reads.
+  const head = street || named || place;
+  if (!head) return null;
+  const locality = String(address.suburb || address.town || address.city || address.village || "").trim();
+  const name_ = locality && !head.toLowerCase().includes(locality.toLowerCase()) ? `${head}, ${locality}` : head;
+  return { name: name_, locality };
+}
+
+export function parseReverse(json) {
+  if (!json || typeof json !== "object" || json.error) return null;
+  const label = labelFor(json.address || {}, json.name || "");
+  if (!label) return null;
+  const lat = Number(json.lat), lng = Number(json.lon);
+  return { ...label, coord: Number.isFinite(lat) && Number.isFinite(lng) ? { lng, lat } : null };
+}
+
+export async function reversePlace({ coord, lang = "en", timeoutMs = 6000 }) {
+  if (!coord || !Number.isFinite(coord.lat) || !Number.isFinite(coord.lng)) return null;
+  const res = await fetch(buildReverseUrl(coord, lang), {
+    headers: {
+      accept: "application/json",
+      // Nominatim's policy asks for an identifying agent; the proxy is the only caller.
+      "user-agent": "where-to-go/1.4 (personal transit launcher for Trix)",
+    },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) return null;
+  return parseReverse(await res.json().catch(() => null));
+}
+
 /** The queries worth asking for one typed address: as typed, then with the city/state tail removed. */
 export function variantsFor(text) {
   const t = String(text || "").trim();

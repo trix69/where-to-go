@@ -72,6 +72,27 @@ export async function searchAddresses(text) {
 }
 
 /**
+ * What is at this point — the label under the map pin.
+ *
+ * Null is a valid answer and is not an error: the pin still works, because a confirmed place travels on
+ * its coordinate. Nothing is invented to fill the line.
+ */
+export async function reverseAddress(lat, lng) {
+  if (usingMock() || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  try {
+    const res = await fetch(`${CONFIG.proxyBase}/reverse?coord=${lng},${lat}`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body || body.ok !== true || body.provider !== "osm") return null;
+    return { name: String(body.name || ""), locality: String(body.locality || "") };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {{address: string, coord?: {lng: number, lat: number}, name?: object}} place  destination
  * @param {{origin?: {coord?: {lng:number, lat:number}, address?: string}}} [opts]
  * @returns {Promise<{ok: true, provider: string, mode: string, line: string|number,

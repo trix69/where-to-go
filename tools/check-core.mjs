@@ -9,7 +9,7 @@
  * returns that shape. That needs a real key.
  */
 import { readFileSync } from "node:fs";
-import { buildTripUrl, summarise, tfCoord, variantsFor } from "../proxy/core.mjs";
+import { buildTripUrl, buildReverseUrl, labelFor, parseReverse, summarise, tfCoord, variantsFor } from "../proxy/core.mjs";
 import { allowed } from "../proxy/worker.js";
 
 let failures = 0;
@@ -296,6 +296,34 @@ ok("a github.io referer still allowed when Origin is absent",
   const globals = new Set("location history screen status name top parent frames self window document navigator console origin close open focus blur print stop event length external menubar toolbar scrollbars innerWidth innerHeight outerWidth outerHeight devicePixelRatio".split(" "));
   const clashes = [...new Set(names)].filter((n) => globals.has(n));
   ok("app.js shadows no browser global at top level", clashes.length === 0, clashes.join(", "));
+}
+
+/* Reverse geocoding: the map pin's label. Nominatim, because TfNSW's coord endpoint answers
+   {"locations":[]} for every coordinate tried — Central Station included — and Photon answers from a home
+   connection but not from Cloudflare's egress. */
+{
+  const url = buildReverseUrl({ lng: 151.1570123, lat: -33.8840567 });
+  ok("reverse URL is a Nominatim request", url.startsWith("https://nominatim.openstreetmap.org/reverse?"), url);
+  ok("reverse sends lat and lon, six decimals", url.includes("lat=-33.884057") && url.includes("lon=151.157012"), url);
+  ok("reverse asks for building-level detail", url.includes("zoom=18") && url.includes("addressdetails=1"), url);
+
+  const house = labelFor({ house_number: "12", road: "Norton Street", suburb: "Leichhardt" });
+  ok("a house reads number, street, suburb", house?.name === "12 Norton Street, Leichhardt", JSON.stringify(house));
+  const road = labelFor({ road: "George Street", city: "Parramatta" });
+  ok("a road without a number still names the suburb", road?.name === "George Street, Parramatta", JSON.stringify(road));
+  const stop = labelFor({ road: "Norton Street", suburb: "Leichhardt" }, "Norton St opp Leichhardt Public School");
+  ok("a bus stop's name does not replace its road", stop?.name === "Norton Street, Leichhardt", JSON.stringify(stop));
+  const park = labelFor({ leisure: "park", suburb: "Centennial Park" }, "The Rose Garden");
+  ok("a park with no road uses its own name", park?.name === "The Rose Garden, Centennial Park", JSON.stringify(park));
+  const same = labelFor({ amenity: "marketplace" }, "Leichhardt Marketplace");
+  ok("the suburb is not repeated when the name already has it", same?.name === "Leichhardt Marketplace", JSON.stringify(same));
+  ok("nothing at the point returns null, not a guess", labelFor({}, "") === null, JSON.stringify(labelFor({}, "")));
+  ok("an error answer returns null", parseReverse({ error: "Unable to geocode" }) === null, JSON.stringify(parseReverse({ error: "Unable to geocode" })));
+  const parsed = parseReverse({ lat: "-33.8840855", lon: "151.1570293",
+    name: "Norton St opp Leichhardt Public School",
+    address: { road: "Norton Street", suburb: "Leichhardt", house_number: "" } });
+  ok("the parsed label keeps Nominatim's own coordinate",
+    parsed?.name === "Norton Street, Leichhardt" && parsed.coord.lng === 151.1570293, JSON.stringify(parsed));
 }
 
 console.log(failures ? `\n${failures} failed` : "\nall passed");

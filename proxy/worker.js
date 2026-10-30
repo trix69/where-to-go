@@ -5,7 +5,7 @@
  *
  * GET /trip?to=<address>&from=<address>|fromCoord=<lng>,<lat>
  */
-import { fetchTrip, resolvePlaces } from "./core.mjs";
+import { fetchTrip, resolvePlaces, reversePlace } from "./core.mjs";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*", // GET only, no credentials, no cookies: nothing to protect
@@ -57,6 +57,16 @@ export default {
         ok: true, provider: "tfnsw", name: best.name, coord: best.coord, locality: best.locality,
         matches: rest.map((m) => ({ name: m.name, coord: m.coord, locality: m.locality })),
       });
+    }
+
+    // What is at this point: the label under the map pin in the place editor.
+    if (url.pathname === "/reverse") {
+      const raw = (url.searchParams.get("coord") || "").trim();
+      const [lng, lat] = raw.split(",").map(Number);
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) return json(400, { ok: false, error: "no-coord" });
+      const hit = await reversePlace({ coord: { lng, lat } });
+      if (!hit) return json(200, { ok: false, error: "not-found" });
+      return json(200, { ok: true, provider: "osm", ...hit });
     }
 
     if (url.pathname !== "/trip") return json(404, { ok: false, error: "not-found" });

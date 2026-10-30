@@ -4,7 +4,7 @@
  * No framework, no build step, no network beyond the transit lookup.
  */
 
-import { getTrip, mapsUrl, usingMock, searchAddresses } from "./transit.js?v=1.4";
+import { getTrip, mapsUrl, usingMock, searchAddresses, reverseAddress } from "./transit.js?v=1.4";
 
 const STORE = "whereToGo.v1";
 
@@ -103,6 +103,14 @@ const COPY = {
     stillGo: "Open in Maps anyway",
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
+    mapOpen: "Pick on the map",
+    mapTitle: "Pick on the map",
+    mapHint: "Drag the map until the pin is on the door.",
+    mapUse: "Use this spot",
+    mapLooking: "Looking…",
+    mapNoAddress: "No street address here — the pin itself is enough.",
+    zoomIn: "Zoom in",
+    zoomOut: "Zoom out",
     noMatches: "No match — try another spelling.",
     searching: "Searching…",
     mockNoSave: "Sample mode: addresses can't be saved here.",
@@ -274,6 +282,14 @@ const COPY = {
     stillGo: "还是打开地图",
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
+    mapOpen: "在地图上选位置",
+    mapTitle: "在地图上选位置",
+    mapHint: "拖动地图，把图钉对准门口。",
+    mapUse: "就用这里",
+    mapLooking: "正在查找…",
+    mapNoAddress: "这里没有门牌，用图钉的位置也可以。",
+    zoomIn: "放大",
+    zoomOut: "缩小",
     noMatches: "没有找到，请换个写法。",
     searching: "正在查找…",
     mockNoSave: "示例模式：这里无法保存地址。",
@@ -596,6 +612,18 @@ const el = {
   placeWarn: $("placeWarn"),
   placeDel: $("placeDel"),
   placeDone: $("placeDone"),
+  placeMap: $("placeMap"),
+  placeMapLabel: $("placeMapLabel"),
+  map: $("map"),
+  mapTitle: $("mapTitle"),
+  mapHint: $("mapHint"),
+  mapWrap: $("mapWrap"),
+  mapTilesLayer: $("mapTiles"),
+  mapAddr: $("mapAddr"),
+  mapUse: $("mapUse"),
+  mapBack: $("mapBack"),
+  mapIn: $("mapIn"),
+  mapOut: $("mapOut"),
   editPlace: $("editPlace"),
   closeManage: $("closeManage"),
   verBtn: $("verBtn"),
@@ -737,7 +765,7 @@ let opener = null;
 
 function show(which) {
   const wasOpen = !el.sheet.hidden || !el.manage.hidden || !el.place.hidden || !el.install.hidden
-    || !el.icons.hidden || !el.order.hidden;
+    || !el.icons.hidden || !el.order.hidden || !el.map.hidden;
   if (which && !wasOpen) opener = document.activeElement;
 
   el.sheet.hidden = which !== "answer";
@@ -745,11 +773,14 @@ function show(which) {
   el.place.hidden = which !== "place";
   el.install.hidden = which !== "install";
   el.order.hidden = which !== "order";
+  el.map.hidden = which !== "map";
+  if (which !== "map") stopMap();
   if (which !== "icons") el.icons.hidden = true;
   document.body.style.overflow = which ? "hidden" : "";
 
   if (which) {
-    const root = { answer: el.sheet, manage: el.manage, place: el.place, install: el.install, icons: el.icons, order: el.order }[which];
+    const root = { answer: el.sheet, manage: el.manage, place: el.place, install: el.install,
+                   icons: el.icons, order: el.order, map: el.map }[which];
     const target = root && root.querySelector(".sheet-title[tabindex], [data-focus], .icons[tabindex]");
     target?.focus?.({ preventScroll: true });
   } else if (opener && document.contains(opener)) {
@@ -1176,6 +1207,7 @@ function openPlace(place) {
   }
   el.placeDone.textContent = c.done;
   el.placeDone.disabled = false;
+  el.placeMapLabel.textContent = c.mapOpen;
   closeList();
   renderIcons();
   refreshDone();
@@ -1395,6 +1427,188 @@ function words(s) {
     .filter((w) => w.length > 2 && !GENERIC.has(w));
 }
 
+/* ---------- the map: say where by pointing at it ----------
+ * Trix: "also provide an option to allow user to select address by placing a pin on the map", with the
+ * person's own location as where the pin starts.
+ *
+ * Two decisions shape this screen:
+ * - the map moves and the pin does not, so the target is always the middle of the screen and nobody has
+ *   to hit a 24 px teardrop with a finger;
+ * - the address under the pin is read back from the exact point the trip will use, so the words and the
+ *   coordinate cannot disagree. When there is no street name there, it says so and the pin still counts.
+ */
+const MAP_TILE = 256;
+const MAP_MIN_Z = 15;
+const MAP_MAX_Z = 19;
+const MAP_CBD = { lat: -33.8688, lng: 151.2093 };
+const mapView = { z: 17, lat: MAP_CBD.lat, lng: MAP_CBD.lng, hit: null, moved: false };
+
+/* OpenStreetMap's own tiles: the only keyless, lawful raster left. CARTO's calm Voyager style now
+ * watermarks every tile "API KEY REQUIRED"; Wikimedia's forbids third-party apps; Mapbox, Stadia and
+ * Thunderforest all need a key. So the map is busier than this audience deserves — the answer they
+ * read is the line under the pin, and the pin is the only thing on the map that is not a label. */
+function mapTileUrl(z, x, y) {
+  return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+}
+const mapTileCache = new Map();
+let mapDrag = null;
+let mapReverseTimer = null;
+let mapReverseSeq = 0;
+
+const worldSize = (z) => MAP_TILE * 2 ** z;
+
+function toWorld(lat, lng, z) {
+  const size = worldSize(z);
+  const s = Math.min(Math.max(Math.sin((lat * Math.PI) / 180), -0.9999), 0.9999);
+  return { x: ((lng + 180) / 360) * size, y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * size };
+}
+
+function toLatLng(x, y, z) {
+  const size = worldSize(z);
+  const n = Math.PI - (2 * Math.PI * y) / size;
+  return { lat: (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))), lng: (x / size) * 360 - 180 };
+}
+
+/** Paints the tiles that cover the viewport and parks the layer so the viewport centre is the pin. */
+function renderMap() {
+  const rect = el.mapWrap.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const centre = toWorld(mapView.lat, mapView.lng, mapView.z);
+  const left = centre.x - rect.width / 2;
+  const top = centre.y - rect.height / 2;
+  el.mapTilesLayer.style.transform = `translate3d(${-left}px, ${-top}px, 0)`;
+
+  const count = 2 ** mapView.z;
+  const x0 = Math.floor(left / MAP_TILE) - 1, x1 = Math.floor((left + rect.width) / MAP_TILE) + 1;
+  const y0 = Math.floor(top / MAP_TILE) - 1, y1 = Math.floor((top + rect.height) / MAP_TILE) + 1;
+  const wanted = new Set();
+  for (let x = x0; x <= x1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      if (x < 0 || y < 0 || x >= count || y >= count) continue;   // past the edge of the world
+      const key = `${mapView.z}/${x}/${y}`;
+      wanted.add(key);
+      let img = mapTileCache.get(key);
+      if (!img) {
+        img = document.createElement("img");
+        img.className = "map-tile";
+        img.alt = "";
+        img.decoding = "async";
+        img.draggable = false;
+        img.src = mapTileUrl(mapView.z, x, y);
+        img.style.left = `${x * MAP_TILE}px`;
+        img.style.top = `${y * MAP_TILE}px`;
+        mapTileCache.set(key, img);
+      }
+      if (!img.isConnected) el.mapTilesLayer.append(img);
+    }
+  }
+  for (const [key, img] of mapTileCache) {
+    if (!wanted.has(key)) {
+      img.remove();
+      if (mapTileCache.size > 96) mapTileCache.delete(key);   // keep a little for panning back
+    }
+  }
+}
+
+/** The address under the pin, asked for the centre of the screen — the same point the trip will use. */
+function scheduleReverse() {
+  const c = t();
+  clearTimeout(mapReverseTimer);
+  el.mapAddr.textContent = c.mapLooking;
+  mapView.hit = null;
+  const seq = ++mapReverseSeq;
+  mapReverseTimer = setTimeout(async () => {
+    const hit = await reverseAddress(mapView.lat, mapView.lng);
+    if (seq !== mapReverseSeq || el.map.hidden) return;
+    mapView.hit = hit;
+    el.mapAddr.textContent = hit && hit.name ? hit.name : c.mapNoAddress;
+  }, 450);
+}
+
+/** Clears the timers and the pointer capture when the sheet closes, so a stale lookup cannot paint. */
+function stopMap() {
+  clearTimeout(mapReverseTimer);
+  mapReverseSeq++;
+  if (mapDrag) {
+    try { el.mapWrap.releasePointerCapture(mapDrag.id); } catch { /* already gone */ }
+    mapDrag = null;
+  }
+  el.mapWrap.classList.remove("grabbing");
+}
+
+function mapSettle(dx, dy) {
+  const rect = el.mapWrap.getBoundingClientRect();
+  const centre = toWorld(mapView.lat, mapView.lng, mapView.z);
+  const moved = toLatLng(centre.x - dx, centre.y - dy, mapView.z);
+  mapView.lat = Math.min(Math.max(moved.lat, -85), 85);
+  mapView.lng = ((moved.lng + 540) % 360) - 180;
+  if (Math.abs(dx) + Math.abs(dy) > 4) mapView.moved = true;
+  renderMap();
+  scheduleReverse();
+}
+
+async function openMap(place) {
+  const c = t();
+  el.mapTitle.textContent = c.mapTitle;
+  el.mapHint.textContent = c.mapHint;
+  el.mapWrap.setAttribute("aria-label", c.mapTitle);
+  el.mapUse.textContent = c.mapUse;
+  el.mapBack.textContent = c.mapBack;
+  el.mapIn.setAttribute("aria-label", c.zoomIn);
+  el.mapOut.setAttribute("aria-label", c.zoomOut);
+  mapView.z = 17;
+  mapView.hit = null;
+  mapView.moved = false;
+  mapTileCache.clear();
+  el.mapTilesLayer.replaceChildren();
+
+  // Where the pin starts: the point being edited if there is one, otherwise where the person is
+  // standing, otherwise the city — in that order, so editing keeps its own place.
+  const stored = place && place.coord && Number.isFinite(place.coord.lat) ? place.coord : null;
+  const start = stored || MAP_CBD;
+  mapView.lat = start.lat;
+  mapView.lng = start.lng;
+  show("map");
+  renderMap();
+  scheduleReverse();
+
+  if (!stored) {
+    const loc = await askLocation({ maxAge: 120000 });
+    // Only if they have not started aiming: a fix that arrives late must not drag the map out from
+    // under a finger.
+    if (loc && loc.coord && !mapView.moved && !el.map.hidden) {
+      mapView.lat = loc.coord.lat;
+      mapView.lng = loc.coord.lng;
+      renderMap();
+      scheduleReverse();
+    }
+  }
+}
+
+/** Takes the centre of the screen as the answer, and says what it is in the address field. */
+function useMapPoint() {
+  if (!editing) { show("place"); return; }
+  editing.coord = { lat: mapView.lat, lng: mapView.lng };
+  const nameOfPoint = mapView.hit && mapView.hit.name ? mapView.hit.name : "";
+  if (nameOfPoint) {
+    editing.address = nameOfPoint;
+    editing.resolvedName = nameOfPoint;
+    el.placeAddr.value = nameOfPoint;
+  } else {
+    // No street name at this point: the coordinate is the answer, and the field must not keep text
+    // that names somewhere else.
+    editing.address = "";
+    editing.resolvedName = null;
+    el.placeAddr.value = "";
+  }
+  editing.suspect = false;
+  closeList();
+  if (!editingIsNew) { save(); render(); }
+  el.placeNote.hidden = true;
+  refreshDone();
+  show("place");
+}
+
 /* ---------- wiring ---------- */
 
 el.closeSheet.addEventListener("click", () => { show(null); stopRefresh(); });
@@ -1491,6 +1705,7 @@ el.icons.addEventListener("click", (e) => { if (e.target === el.icons) closeIcon
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (!el.icons.hidden) { e.stopPropagation(); closeIcons(); return; }
+  if (!el.map.hidden) { e.stopPropagation(); show("place"); return; }
   if (!el.place.hidden) { e.stopPropagation(); cancelPlace(); }
 }, true);
 
@@ -1521,6 +1736,59 @@ el.placeDel.addEventListener("click", () => {
 el.editPlace.addEventListener("click", () => {
   if (currentPlace) openPlace(currentPlace);
 });
+
+el.placeMap.addEventListener("click", () => { if (editing) openMap(editing); });
+el.mapUse.addEventListener("click", useMapPoint);
+el.mapBack.addEventListener("click", () => show("place"));
+
+/* One finger moves the map; the layer is transformed in the handler so the picture never lags the
+ * finger, and the centre is only recomputed on release. */
+el.mapWrap.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0 && e.pointerType === "mouse") return;
+  mapDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
+  try { el.mapWrap.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+  el.mapWrap.classList.add("grabbing");
+});
+el.mapWrap.addEventListener("pointermove", (e) => {
+  if (!mapDrag || e.pointerId !== mapDrag.id) return;
+  mapDrag.dx = e.clientX - mapDrag.x;
+  mapDrag.dy = e.clientY - mapDrag.y;
+  const rect = el.mapWrap.getBoundingClientRect();
+  const centre = toWorld(mapView.lat, mapView.lng, mapView.z);
+  el.mapTilesLayer.style.transform =
+    `translate3d(${-(centre.x - rect.width / 2 - mapDrag.dx)}px, ${-(centre.y - rect.height / 2 - mapDrag.dy)}px, 0)`;
+});
+function endMapDrag(e) {
+  if (!mapDrag || (e && e.pointerId !== mapDrag.id)) return;
+  const { dx, dy, id } = mapDrag;
+  mapDrag = null;
+  try { el.mapWrap.releasePointerCapture(id); } catch { /* already released */ }
+  el.mapWrap.classList.remove("grabbing");
+  mapSettle(dx, dy);
+}
+el.mapWrap.addEventListener("pointerup", endMapDrag);
+el.mapWrap.addEventListener("pointercancel", endMapDrag);
+
+/* Arrow keys are the keyboard's way to aim: 40 px a press, and the address follows. */
+el.mapWrap.addEventListener("keydown", (e) => {
+  const step = 40;
+  const moves = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+  if (e.key === "Enter") { e.preventDefault(); useMapPoint(); return; }
+  const move = moves[e.key];
+  if (!move) return;
+  e.preventDefault();
+  mapSettle(move[0], move[1]);
+});
+
+function mapZoom(delta) {
+  const z = Math.min(Math.max(mapView.z + delta, MAP_MIN_Z), MAP_MAX_Z);
+  if (z === mapView.z) return;
+  mapView.z = z;
+  renderMap();
+  scheduleReverse();
+}
+el.mapIn.addEventListener("click", () => mapZoom(1));
+el.mapOut.addEventListener("click", () => mapZoom(-1));
 
 
 // No outside-tap close: the place overlay has an address being set up in it, and a stray tap that

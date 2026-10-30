@@ -843,3 +843,126 @@ html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
   pointer-events: none;
 }
 .name-edit svg { width: 100%; height: 100%; }
+
+/* ---------- the map ----------
+ * Full height, not a bottom sheet: the pin sits at the middle of whatever height it is given, and the
+ * thing being aimed at has to be the biggest object on the screen.
+ */
+.sheet.full { align-items: stretch; }
+.sheet.full .panel {
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+  height: 100%;
+  max-width: none;
+  padding: calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 14px);
+  border-radius: 0;
+  border-top: 0;
+  overflow: hidden;
+  gap: 10px;
+}
+.sheet.full .sheet-title { margin: 0; flex: 0 0 auto; }
+.map-hint { margin: 0; flex: 0 0 auto; color: var(--ink-soft); font-size: var(--type-small, 1rem); }
+
+.map-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 240px;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: #e8e6e0;
+  touch-action: none;          /* the map owns the gesture; the page must not scroll under it */
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.map-wrap:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.map-wrap.grabbing { cursor: grabbing; }
+
+/* Tiles live on a zero-sized origin and are positioned in world pixels; the layer is then translated so
+ * the centre of the viewport is the pin. Nothing here is read back during a drag. */
+.map-tiles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+  filter: saturate(0.92);       /* the pin must be the only saturated thing on the screen */
+}
+.map-tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* The pin's tip, not its body, is the coordinate: translate by its own height. */
+.map-pin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 32px;
+  height: 44px;
+  transform: translate(-50%, -100%);
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+  pointer-events: none;
+}
+.map-pin svg { display: block; width: 100%; height: 100%; }
+
+.map-zoom { position: absolute; right: 10px; top: 10px; display: grid; gap: 8px; }
+.map-zoom button {
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.6rem;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+.map-credit {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #333;
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.map-addr {
+  margin: 0;
+  flex: 0 0 auto;
+  min-height: 1.6em;
+  font-size: max(1.1rem, 18px);
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+/* The way into the map, in the place editor. Bordered, not filled: 完成 is still the one filled button. */
+.mapbtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap);
+  margin-top: 10px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: max(1.05rem, 18px);
+  text-align: left;
+  cursor: pointer;
+}
+.mapbtn-pin { width: 22px; height: 22px; flex: 0 0 auto; color: var(--accent); }
