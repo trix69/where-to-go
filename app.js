@@ -1463,13 +1463,21 @@ function words(s) {
 const SHARE_PARAM = "add";
 const SHARE_LABEL = "label";
 
+/**
+ * Trix: "The shared URL should contain a unique coordinate to avoid any duplicate name issue."
+ *
+ * So the link now carries the coordinate and nothing else. Two places can share a name — two "Leichhardt
+ * Marketplace", two "Flood Street" — and only one of them is where this was pinned; a name in the URL let
+ * the receiver inherit the wrong one. The coordinate cannot be ambiguous, and the receiver's app resolves
+ * the name from the point it actually points at.
+ *
+ * Built by hand so the comma stays a comma: a link people read aloud or retype should look like
+ * coordinates, not %2C.
+ */
 function shareUrlFor(place) {
-  // Built by hand so the comma stays a comma: a link people read aloud or retype should look like
-  // coordinates, not %2C.
   const base = `${location.origin}${location.pathname}`;
   const coord = `${place.coord.lat.toFixed(6)},${place.coord.lng.toFixed(6)}`;
-  const label = String(place.resolvedName || place.address || "").slice(0, 120);
-  return `${base}?${SHARE_PARAM}=${coord}${label ? `&${SHARE_LABEL}=${encodeURIComponent(label)}` : ""}`;
+  return `${base}?${SHARE_PARAM}=${coord}`;
 }
 
 let toastTimer = null;
@@ -1512,8 +1520,10 @@ function sharedAddress() {
   const [lat, lng] = raw.split(",").map(Number);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (Math.abs(lat) > 85 || Math.abs(lng) > 180) return null;
-  const label = (params.get(SHARE_LABEL) || "").slice(0, 120).trim();
-  return { lat, lng, label };
+  // Links sent before this change carry &label=; it is a placeholder shown while the point itself is
+  // resolved, never the address that gets stored.
+  const hint = (params.get(SHARE_LABEL) || "").slice(0, 120).trim();
+  return { lat, lng, hint };
 }
 
 let sharedPending = sharedAddress();
@@ -1526,13 +1536,14 @@ function maybeOpenShared() {
   history.replaceState(null, "", location.pathname);   // a reload must not reopen it
 
   const c = t();
+  const coord = { lat: shared.lat, lng: shared.lng };
   openPlace({
     id: `p${Date.now()}`,
     name: {},                                          // theirs to fill in
     glyph: "📍",
-    address: shared.label,
-    resolvedName: shared.label,
-    coord: { lat: shared.lat, lng: shared.lng },
+    address: shared.hint || "",                        // a placeholder at most; see below
+    resolvedName: shared.hint || null,
+    coord,
   }, { draft: true });
 
   el.placeName.value = "";
@@ -1541,7 +1552,23 @@ function maybeOpenShared() {
   el.placeNote.textContent = c.sharedNote;
   el.placeName.focus();
   refreshDone();
+
+  /* The link says where, not what: ask the point what it is called, and correct the placeholder when an
+     answer arrives. If nothing answers, the draft keeps the coordinate and an empty address — which is
+     enough to travel with, and says nothing untrue. */
+  const seq = ++shareLookupSeq;
+  reverseAddress(coord.lat, coord.lng).then((hit) => {
+    if (seq !== shareLookupSeq || !editing || editing.coord !== coord) return;
+    const name = hit && hit.name ? hit.name : "";
+    if (!name) return;
+    editing.address = name;
+    editing.resolvedName = name;
+    el.placeAddr.value = name;
+    refreshDone();
+  });
 }
+
+let shareLookupSeq = 0;
 
 /* ---------- the map: say where by pointing at it ----------
  * Trix: "also provide an option to allow user to select address by placing a pin on the map", with the
