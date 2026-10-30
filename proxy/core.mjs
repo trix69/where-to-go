@@ -265,6 +265,9 @@ export function summarise(json, now = new Date()) {
     // "CCN" is a line code, not a line number: for rail the useful words are where it goes.
     // "Richmond via Parramatta" is a timetable heading, not something to read out: keep the terminus.
     towards: String(ride.destination?.name || firstRide.destination?.name || "").split(/\svia\s/i)[0],
+    // The moment the vehicle reaches the stop you get off at — distinct from the journey's arrival,
+    // which includes the walk at the end.
+    alightISO: when(firstRide.destination?.arrivalTimeEstimated || firstRide.destination?.arrivalTimePlanned)?.toISOString(),
     board: stopOf(firstRide.origin).name,
     boardPlatform: stopOf(firstRide.origin).platform,
     alight: stopOf(firstRide.destination).name,

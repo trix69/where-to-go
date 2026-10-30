@@ -220,6 +220,7 @@ body {
 .dest[hidden], .dest-match[hidden] { display: none; }
 
 .summary {
+  white-space: pre-line;   /* line one is the service, line two is the journey */
   margin: 0 0 8px;
   font-size: var(--type-answer);
   font-weight: 600;

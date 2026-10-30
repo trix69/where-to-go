@@ -53,10 +53,16 @@ const COPY = {
       const change = t.changes > 0 ? ` Change ${t.changes} time${t.changes > 1 ? "s" : ""} on the way.` : "";
       const at = (stop, platform) => (platform ? `${stop}, platform ${platform}` : stop);
       const way = t.towards ? ` towards ${t.towards}` : "";
-      const then = t.walkFromStopMin > 0 ? ` then a ${t.walkFromStopMin} min walk.` : "";
-      return `${head}${way}: board at ${at(t.board, t.boardPlatform)}, ` +
-        `${t.stops} stop${t.stops > 1 ? "s" : ""}, get off at ${at(t.alight, t.alightPlatform)}${then}` +
-        `${change} Leaving in ${tail}`;
+      const platform = /^\d+[A-Za-z]?$/.test(String(t.boardPlatform || "")) ? `platform ${t.boardPlatform}` : "";
+      const departs = t.departISO ? clock(t.departISO) : "";
+      const service = [`${head}${way}`, platform, `in ${t.waitMin} min`, departs ? `departs ${departs}` : ""]
+        .filter(Boolean).join(" · ");
+      const stopAt = t.alightISO ? clock(t.alightISO) : "";
+      const tail2 = t.changes === 0 && t.walkFromStopMin > 0 && stopAt && arrive
+        ? `${stopAt} at the stop. ${t.walkFromStopMin} min walk, ${arrive} at the door.`
+        : `${stopAt ? `${stopAt} at the stop. ` : ""}${arrive ? `${arrive} at the door.` : ""}`;
+      return `${service}\nBoard at ${t.board}, ${t.stops} stop${t.stops > 1 ? "s" : ""}, ` +
+        `get off at ${t.alight}.${change} ${tail2}`;
     },
     modes: { bus: "Bus", train: "Train", ferry: "Ferry", lightrail: "Light rail", metro: "Metro", coach: "Coach" },
     failed: "No answer right now.",
@@ -129,11 +135,22 @@ const COPY = {
       // Which way the vehicle is going: that is what its front display says, and a platform holds both
       // directions. Always shown when the provider gives a terminus (Trix).
       const way = t.towards ? `（开往${t.towards}）` : "";
-      // The arrival time is the time at the door, not at the stop — so say the walk when there is one.
-      const then = t.walkFromStopMin > 0 ? `，再走${t.walkFromStopMin}分钟` : "";
-      return `${line}${way}：从${at(t.board, t.boardPlatform)}上车，坐${t.stops}站，` +
-        `到${at(t.alight, t.alightPlatform)}下车${then}。${change}` +
-        `${t.waitMin}分钟后有车${arrive ? `，${arrive}到` : ""}。`;
+      /* Line one is what a person standing at the stop needs to see: which service, which platform (only
+       * when it is a real platform number — a light-rail stop reports a code like "L2", and a bus stop's
+       * Stand is already in its name), how long, and the clock time it leaves (Trix). */
+      const platform = /^\d+[A-Za-z]?$/.test(String(t.boardPlatform || "")) ? `${t.boardPlatform}号站台` : "";
+      const departs = t.departISO ? clock(t.departISO) : "";
+      const service = [`${line}${way}`, platform, `${t.waitMin}分钟后到`, departs ? `${departs}开` : ""]
+        .filter(Boolean).join(" · ");
+      // Two clocks, because they are two different events: the vehicle reaching the stop you get off at,
+      // then the walk, then the address. With a change the walk belongs to a later vehicle, so only the
+      // first clock is shown.
+      const stopAt = t.alightISO ? clock(t.alightISO) : "";
+      const doorAt = arrive ? `步行${t.walkFromStopMin}分钟后 ${arrive} 抵达` : "";
+      const tail2 = t.changes === 0 && t.walkFromStopMin > 0 && stopAt
+        ? `${stopAt}到站。${doorAt}`
+        : `${stopAt ? `${stopAt}到站。` : ""}${arrive ? `${arrive}抵达。` : ""}`;
+      return `${service}\n从${t.board}上车，坐${t.stops}站，到${t.alight}下车。${change}${tail2}`;
     },
     modes: { bus: "公交", train: "火车", ferry: "渡轮", lightrail: "轻轨", metro: "地铁", coach: "巴士" },
     failed: "现在查不到。",

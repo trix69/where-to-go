@@ -226,6 +226,8 @@ ok("a github.io referer still allowed when Origin is absent",
   const t = summarise(j, new Date("2026-10-30T08:46:00Z"));
   ok("final walk measured (3 min)", t.walkFromStopMin === 3, String(t.walkFromStopMin));
   ok("arrival is the door, not the stop", t.arriveISO === "2026-10-30T09:08:00.000Z", String(t.arriveISO));
+  ok("the vehicle's own arrival at the alighting stop is its own instant",
+    t.alightISO === "2026-10-30T09:05:00.000Z", String(t.alightISO));
   ok("stops counted on the ride, not the walk", t.stops === 3, String(t.stops));
 }
 
