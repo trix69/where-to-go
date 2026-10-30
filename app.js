@@ -4,7 +4,7 @@
  * No framework, no build step, no network beyond the transit lookup.
  */
 
-import { getTrip, mapsUrl, usingMock, searchAddresses } from "./transit.js?v=0.1";
+import { getTrip, mapsUrl, usingMock, searchAddresses } from "./transit.js?v=1.0";
 
 const STORE = "whereToGo.v1";
 
