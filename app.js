@@ -103,6 +103,13 @@ const COPY = {
     stillGo: "Open in Maps anyway",
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
+    share: "Share this address",
+    shareTitle: "An address for Where To Go",
+    shareBody: "Open this link and give the address a name of your own.",
+    shareCopied: "Link copied",
+    shareFailed: "Couldn't share here",
+    sharedNote: "This address came from a link. Give it a name, then 完成.",
+    newName: "Name, e.g. Daughter's house",
     mapOpen: "Pick on the map",
     mapTitle: "Pick on the map",
     mapHint: "Drag the map until the pin is on the door.",
@@ -283,6 +290,13 @@ const COPY = {
     stillGo: "还是打开地图",
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
+    share: "分享这个地址",
+    shareTitle: "想去哪儿 · 一个地址",
+    shareBody: "打开链接，自己给它起个名字。",
+    shareCopied: "链接已复制",
+    shareFailed: "这里无法分享",
+    sharedNote: "这个地址来自别人分享的链接。起个名字，再点完成。",
+    newName: "起个名字，例如：女儿家",
     mapOpen: "在地图上选位置",
     mapTitle: "在地图上选位置",
     mapHint: "拖动地图，把图钉对准门口。",
@@ -614,6 +628,8 @@ const el = {
   placeWarn: $("placeWarn"),
   placeDel: $("placeDel"),
   placeDone: $("placeDone"),
+  placeShare: $("placeShare"),
+  toast: $("toast"),
   placeMap: $("placeMap"),
   placeMapLabel: $("placeMapLabel"),
   map: $("map"),
@@ -1172,9 +1188,11 @@ function closePlace() {
   show(null);
 }
 
-function openPlace(place) {
+function openPlace(place, opts = {}) {
   const c = t();
-  editingIsNew = !place;
+  // A shared address is a draft even though it arrives with a coordinate: nothing is written until the
+  // person names it. opts.draft says so.
+  editingIsNew = opts.draft ? true : !place;
   if (!place) {
     // A draft. Nothing is added to the tiles, and nothing is written to storage, until 完成 — closing
     // the overlay any other way throws it away (Trix).
@@ -1210,6 +1228,11 @@ function openPlace(place) {
   el.placeDone.textContent = c.done;
   el.placeDone.disabled = false;
   el.placeMapLabel.textContent = c.mapOpen;
+  /* Sharing is offered for a saved address, not for a draft: the URL promises a point somebody else can
+     use, and a half-filled place is not a promise. */
+  const shareable = !editingIsNew && !!(place.coord && (place.resolvedName || place.address));
+  el.placeShare.hidden = !shareable;
+  el.placeShare.setAttribute("aria-label", c.share);
   closeList();
   renderIcons();
   refreshDone();
@@ -1427,6 +1450,97 @@ function words(s) {
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
     .split(" ")
     .filter((w) => w.length > 2 && !GENERIC.has(w));
+}
+
+/* ---------- sharing an address ----------
+ * Trix: a saved address should be shareable as a link, and whoever receives it should land in this app
+ * with that address ready and a name to fill in.
+ *
+ * The URL carries the coordinate and the label, nothing else: the coordinate is what a trip needs, and the
+ * label is what the receiver reads before naming the place themselves. It is deliberately not signed —
+ * anyone can change it, and all that changes is a place they are about to name on their own phone.
+ */
+const SHARE_PARAM = "add";
+const SHARE_LABEL = "label";
+
+function shareUrlFor(place) {
+  // Built by hand so the comma stays a comma: a link people read aloud or retype should look like
+  // coordinates, not %2C.
+  const base = `${location.origin}${location.pathname}`;
+  const coord = `${place.coord.lat.toFixed(6)},${place.coord.lng.toFixed(6)}`;
+  const label = String(place.resolvedName || place.address || "").slice(0, 120);
+  return `${base}?${SHARE_PARAM}=${coord}${label ? `&${SHARE_LABEL}=${encodeURIComponent(label)}` : ""}`;
+}
+
+let toastTimer = null;
+function showToast(text) {
+  el.toast.textContent = text;
+  el.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.toast.hidden = true; }, 2400);
+}
+
+async function sharePlace() {
+  if (!editing || !editing.coord || editingIsNew) return;
+  const c = t();
+  const url = shareUrlFor(editing);
+  const label = String(editing.resolvedName || editing.address || "");
+  try {
+    if (typeof navigator.share === "function") {
+      await navigator.share({ title: c.shareTitle, text: label, url });
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    showToast(c.shareCopied);
+  } catch (err) {
+    if (err && err.name === "AbortError") return;            // they changed their mind; not a failure
+    try {
+      await navigator.clipboard.writeText(url);              // a refused share sheet can still copy
+      showToast(c.shareCopied);
+    } catch {
+      showToast(c.shareFailed);
+    }
+  }
+}
+
+/* A link somebody sent: {lat, lng, label} or null. Anything malformed is ignored, and the app boots
+   normally — a broken link must not be able to stop the launch. */
+function sharedAddress() {
+  const params = new URLSearchParams(location.search);
+  const raw = params.get(SHARE_PARAM);
+  if (!raw) return null;
+  const [lat, lng] = raw.split(",").map(Number);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 85 || Math.abs(lng) > 180) return null;
+  const label = (params.get(SHARE_LABEL) || "").slice(0, 120).trim();
+  return { lat, lng, label };
+}
+
+let sharedPending = sharedAddress();
+
+/** Opens the received address as a draft the moment the app is usable, then forgets the parameters. */
+function maybeOpenShared() {
+  const shared = sharedPending;
+  if (!shared || !el.gate.hidden) return;
+  sharedPending = null;
+  history.replaceState(null, "", location.pathname);   // a reload must not reopen it
+
+  const c = t();
+  openPlace({
+    id: `p${Date.now()}`,
+    name: {},                                          // theirs to fill in
+    glyph: "📍",
+    address: shared.label,
+    resolvedName: shared.label,
+    coord: { lat: shared.lat, lng: shared.lng },
+  }, { draft: true });
+
+  el.placeName.value = "";
+  el.placeName.placeholder = c.newName;
+  el.placeNote.hidden = false;
+  el.placeNote.textContent = c.sharedNote;
+  el.placeName.focus();
+  refreshDone();
 }
 
 /* ---------- the map: say where by pointing at it ----------
@@ -1788,6 +1902,7 @@ el.editPlace.addEventListener("click", () => {
 });
 
 el.placeMap.addEventListener("click", () => { if (editing) openMap(editing); });
+el.placeShare.addEventListener("click", sharePlace);
 el.mapUse.addEventListener("click", useMapPoint);
 el.mapCancel.addEventListener("click", () => show("place"));
 
@@ -1963,6 +2078,8 @@ render();
 
 function closeGate() {
   el.gate.hidden = true;
+  // A shared link opens its draft as soon as the app is usable, behind the gate rather than under it.
+  setTimeout(maybeOpenShared, 0);
 }
 
 let gateMode = "check";

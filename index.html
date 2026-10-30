@@ -150,6 +150,13 @@
   <section class="sheet" id="place" role="dialog" aria-modal="true" hidden aria-labelledby="placeTitle">
     <div class="panel">
       <h2 class="sheet-title" id="placeTitle" tabindex="-1"></h2>
+      <!-- Offered only once the address is confirmed: a URL is worth sharing when it names a point. -->
+      <button class="sheet-share" id="placeShare" type="button" aria-label="Share" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3v12M12 3l-4 4M12 3l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M5 11H3.6v9.4h16.8V11H19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
       <button class="sheet-close" id="placeClose" type="button" aria-label="Close">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
@@ -192,6 +199,7 @@
 
 </main>
 
+<div class="toast" id="toast" role="status" hidden></div>
 <script type="module" src="app.js?v=1.4"></script>
 </body>
 </html>
