@@ -635,18 +635,6 @@ function tile(place) {
  * drag is the one interaction this audience can least be expected to perform.
  */
 
-function nearestTile(x, y, skip) {
-  let best = null;
-  let bestD = Infinity;
-  for (const w of el.tiles.querySelectorAll(".tile-wrap:not([data-add])")) {
-    if (w === skip) continue;
-    const r = w.getBoundingClientRect();
-    const d = (x - (r.left + r.width / 2)) ** 2 + (y - (r.top + r.height / 2)) ** 2;
-    if (d < bestD) { bestD = d; best = w; }
-  }
-  return best;
-}
-
 function commitOrder(moved) {
   const ids = [...el.tiles.querySelectorAll(".tile-wrap[data-id]")].map((w) => w.dataset.id);
   const byId = new Map(state.places.map((p) => [p.id, p]));
@@ -660,40 +648,113 @@ function commitOrder(moved) {
   el.orderStatus.textContent = t().movedTo(nameOf(moved), at);
 }
 
+/* A drag that jitters is a drag that feels broken, so the work per frame is kept small: a clone follows
+ * the finger under a transform (no layout, no paint of the grid), slot geometry is measured once and
+ * re-measured only when the grid actually changes order, and the placeholder is only moved when the
+ * pointer has crossed into a different slot. */
 function attachReorder(li, grip, place) {
-  let dragging = false;
+  let ghost = null;
+  let grabX = 0;
+  let grabY = 0;
+  let px = 0;
+  let py = 0;
+  let frame = 0;
+  let slots = [];
+  let active = false;
+
+  const measure = () => {
+    slots = [...el.tiles.querySelectorAll(".tile-wrap:not([data-add])")]
+      .filter((w) => w !== li)
+      .map((w) => ({ el: w, r: w.getBoundingClientRect() }));
+  };
+
+  /* The transform is set in the pointer handler, not here: a browser coalesces paints per frame anyway,
+   * so writing it straight away removes any lag between the finger and the tile, and this frame's work
+   * is only the layout decision — which reads rects and must be batched. */
+  const reorder = () => {
+    frame = 0;
+    if (!ghost) return;
+
+    let best = null;
+    let bestD = Infinity;
+    for (const s of slots) {
+      const d = (px - (s.r.left + s.r.width / 2)) ** 2 + (py - (s.r.top + s.r.height / 2)) ** 2;
+      if (d < bestD) { bestD = d; best = s; }
+    }
+    if (!best) return;
+    const before = py < best.r.top + best.r.height / 2 ||
+      (py <= best.r.bottom && px < best.r.left + best.r.width / 2);
+    const next = before ? best.el : best.el.nextSibling;
+    if (next === li) return;
+    el.tiles.insertBefore(li, next);
+    measure();                      // the grid moved under the finger, so the cached rects are stale
+  };
+
+  const stop = (commit) => {
+    if (!active) return;
+    active = false;
+    if (frame) { cancelAnimationFrame(frame); frame = 0; }
+    // The last pointermove may still be waiting for a frame; settle it first, or a quick flick
+    // commits the order from before the finger stopped.
+    if (commit && ghost) reorder();
+    document.body.classList.remove("reordering");
+    li.classList.remove("dragging");
+    if (ghost) {
+      const r = li.getBoundingClientRect();
+      const dying = ghost;
+      ghost = null;
+      dying.style.transition = "transform 140ms ease-out, opacity 140ms ease-out";
+      dying.style.transform = `translate3d(${r.left}px, ${r.top}px, 0)`;
+      dying.style.opacity = "0";
+      setTimeout(() => dying.remove(), 160);
+    }
+    if (commit) commitOrder(place);
+  };
 
   grip.addEventListener("pointerdown", (e) => {
     if (e.button) return;                       // left button or touch only
     e.preventDefault();
-    // A synthetic event has no real pointer to capture; a real one always does.
-    try { grip.setPointerCapture(e.pointerId); } catch { /* no pointer to capture */ }
-    dragging = true;
+    try { grip.setPointerCapture(e.pointerId); } catch { /* synthetic event: no pointer to capture */ }
+
+    const r = li.getBoundingClientRect();
+    px = e.clientX;
+    py = e.clientY;
+    grabX = px - r.left;
+    grabY = py - r.top;
+
+    ghost = li.cloneNode(true);
+    ghost.classList.add("drag-ghost");
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.removeAttribute("data-id");
+    ghost.style.width = `${r.width}px`;
+    ghost.style.height = `${r.height}px`;
+    ghost.style.transform = `translate3d(${r.left}px, ${r.top}px, 0)`;
+    document.body.append(ghost);
+
+    active = true;
     li.classList.add("dragging");
     document.body.classList.add("reordering");
+    measure();
   });
 
   grip.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    e.preventDefault();
-    const target = nearestTile(e.clientX, e.clientY, li);
-    if (!target) return;
-    const r = target.getBoundingClientRect();
-    const before = e.clientY < r.top + r.height / 2 ||
-      (e.clientY <= r.bottom && e.clientX < r.left + r.width / 2);
-    el.tiles.insertBefore(li, before ? target : target.nextSibling);
+    if (!active) return;
+    e.preventDefault();                         // the grip already refuses panning; keep the page still
+    if (e.clientX === px && e.clientY === py) return;
+    px = e.clientX;
+    py = e.clientY;
+    /* Clamped to the viewport: the grip sits at the tile's right edge, so an unclamped ghost leaves
+     * half the tile off-screen whenever the drag heads left. */
+    const w = ghost.offsetWidth;
+    const h = ghost.offsetHeight;
+    const x = Math.min(Math.max(px - grabX, 8), window.innerWidth - w - 8);
+    const y = Math.min(Math.max(py - grabY, 8), window.innerHeight - h - 8);
+    ghost.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    if (!frame) frame = requestAnimationFrame(reorder);
   });
 
-  const drop = (e) => {
-    if (!dragging) return;
-    dragging = false;
-    try { grip.releasePointerCapture(e.pointerId); } catch { /* nothing captured */ }
-    li.classList.remove("dragging");
-    document.body.classList.remove("reordering");
-    commitOrder(place);
-  };
-  grip.addEventListener("pointerup", drop);
-  grip.addEventListener("pointercancel", drop);
+  grip.addEventListener("pointerup", (e) => { px = e.clientX; py = e.clientY; stop(true); });
+  grip.addEventListener("pointercancel", () => stop(false));
 
   grip.addEventListener("keydown", (e) => {
     const step = e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1
