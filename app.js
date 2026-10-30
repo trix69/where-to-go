@@ -28,6 +28,7 @@ const COPY = {
     looking: "Checking…",
     locating: "Getting your location…",
     locationOff: "Location is off. Allow it for this app, then try again.",
+    locationBlocked: "Location is switched off for this device. Turn it on in Settings, then try again.",
     locationFailed: "Couldn't get your location. Try again.",
     useMyLocation: "Use my location",
     gateChecking: "Checking your location…",
@@ -87,6 +88,7 @@ const COPY = {
     looking: "正在查询…",
     locating: "正在获取您的位置…",
     locationOff: "定位已关闭。请允许定位，再试一次。",
+    locationBlocked: "设备的定位服务关着。请在设置里打开定位，再试一次。",
     locationFailed: "暂时定位不到，请重试。",
     useMyLocation: "使用我的位置",
     gateChecking: "正在确认位置…",
@@ -470,10 +472,7 @@ let location = null; // {coord} once granted; never cache a failure, so "Use my 
  * wrong assumption for someone already out, and produced "add a starting place" on the Home tile —
  * an error about a place when the missing thing was permission.
  */
-function askLocation(opts = {}) {
-  const maxAge = opts.maxAge == null ? 60000 : opts.maxAge;
-  if (location && location.coord && maxAge > 0) return Promise.resolve(location);
-  if (!navigator.geolocation) return Promise.resolve({ error: "unavailable" });
+function askOnce(maxAge) {
   return new Promise((resolve) => {
     let settled = false;
     let watchdog = null;
@@ -493,6 +492,35 @@ function askLocation(opts = {}) {
       { timeout: 10000, maximumAge: maxAge, enableHighAccuracy: false },
     );
   });
+}
+
+/**
+ * The device, asked once — and once more if the first answer could be a hiccup.
+ *
+ * A failed first fix is common on a desk with no window and on desktop Chrome; a single retry a
+ * second later turns most of those into an answer. A refusal is not retried.
+ */
+async function askLocation(opts = {}) {
+  const maxAge = opts.maxAge == null ? 60000 : opts.maxAge;
+  if (location && location.coord && maxAge > 0) return location;
+  if (!navigator.geolocation) return { error: "unavailable" };
+
+  let res = await askOnce(maxAge);
+  if (res.error === "timeout" || res.error === "unavailable") {
+    await new Promise((r) => setTimeout(r, 900));
+    res = await askOnce(maxAge);
+  }
+  if (res.error !== "denied") return res;
+
+  /* Chrome answers PERMISSION_DENIED when the *operating system* has location switched off, even
+   * though the site was granted it — so "定位已关闭。请允许定位" sent people to a permission screen
+   * that already said allow (Trix, on a desktop where the site permission was granted). Ask the
+   * browser what it thinks: granted + a refusal means the block is outside the browser. */
+  let state = "";
+  try {
+    state = (await navigator.permissions.query({ name: "geolocation" })).state;
+  } catch { /* not implemented everywhere */ }
+  return state === "granted" ? { error: "blocked" } : res;
 }
 
 async function originFor() {
@@ -541,7 +569,9 @@ async function openAnswer(place, opts = {}) {
     if (seq !== lookSeq) return;
     if (origin.error && !origin.address) {
       // Permission is the blocker, so say that and offer the one action that can fix it.
-      el.summary.textContent = origin.error === "denied" ? c.locationOff : c.locationFailed;
+      el.summary.textContent = origin.error === "denied" ? c.locationOff
+        : origin.error === "blocked" ? c.locationBlocked
+        : c.locationFailed;
       el.retryLoc.textContent = c.useMyLocation;
       el.retryLoc.hidden = false;
       el.go.textContent = c.stillGo;
