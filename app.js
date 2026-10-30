@@ -293,11 +293,15 @@ function load() {
         // `suspect` was written by builds before R26 and nothing reads it now; left in place it would
         // keep an old place opening its editor for ever, with no line saying why.
         for (const place of s.places) delete place.suspect;
+        /* The theme default changed to light (Trix). A stored "auto" is almost always the old default
+         * rather than a decision, so it is migrated once; from now on an explicit pick sets
+         * `themeChosen`, which this never touches again. */
+        if (!s.themeChosen && (!s.theme || s.theme === "auto")) s.theme = "light";
         return ensureDefaults(s);
       }
     }
   } catch (e) { /* private mode, corrupt value: fall through to the seed */ }
-  return { lang: pickLang(), theme: "auto", seedVersion: SEED_VERSION, places: SEED.map((p) => ({ ...p })) };
+  return { lang: pickLang(), theme: "light", seedVersion: SEED_VERSION, places: SEED.map((p) => ({ ...p })) };
 }
 
 function save() {
@@ -703,14 +707,20 @@ function openManage() {
       return b;
     }),
   );
-  const theme = state.theme || "auto";
+  const theme = state.theme || "light";
   el.themeRow.replaceChildren(
     ...THEMES.map((th) => {
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = th.label();
       b.setAttribute("aria-pressed", String(theme === th.id));
-      b.addEventListener("click", () => { state.theme = th.id; applyTheme(); save(); openManage(); });
+      b.addEventListener("click", () => {
+        state.theme = th.id;
+        state.themeChosen = true;      // a real choice survives future default changes
+        applyTheme();
+        save();
+        openManage();
+      });
       return b;
     }),
   );
