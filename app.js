@@ -119,10 +119,7 @@ const COPY = {
       const line = t.mode === "bus" || t.mode === "coach" ? `${word}${t.line}路` : `${word}${t.line}`;
       if (!t.board || !t.alight || !t.stops) {
         // No stop list (mock, or a provider that does not give one): keep the older, vaguer sentence.
-        const named = !/^\d+[A-Za-z]?$/.test(String(t.line)) && t.towards;
-        const ride = named
-          ? (t.mode === "train" || t.mode === "metro" ? `开往${t.towards}的${word}` : `${word}（开往${t.towards}）`)
-          : line;
+        const ride = t.towards ? `${line}（开往${t.towards}）` : line;
         return `坐${ride}，${t.waitMin}分钟后有车，车上大约${t.rideMin ?? t.durationMin}分钟${arrive ? `，${arrive}到` : ""}。`;
       }
       const change = t.changes > 0 ? `中途换乘${t.changes}次。` : "";
