@@ -1228,11 +1228,6 @@ function openPlace(place, opts = {}) {
   el.placeDone.textContent = c.done;
   el.placeDone.disabled = false;
   el.placeMapLabel.textContent = c.mapOpen;
-  /* Sharing is offered for a saved address, not for a draft: the URL promises a point somebody else can
-     use, and a half-filled place is not a promise. */
-  const shareable = !editingIsNew && !!(place.coord && (place.resolvedName || place.address));
-  el.placeShare.hidden = !shareable;
-  el.placeShare.setAttribute("aria-label", c.share);
   closeList();
   renderIcons();
   refreshDone();
@@ -1381,6 +1376,17 @@ function renderList() {
 
 function refreshDone() {
   el.placeDone.disabled = !canSave();
+  refreshShare();
+}
+
+/* Sharing is offered for a saved place with a coordinate — the URL promises a point somebody else can
+ * use, and a half-filled place is not a promise. It is recomputed on every change rather than once when
+ * the sheet opens: a preset place that only becomes a real address after a pin or a pick had no share
+ * icon until the sheet was closed and opened again (Trix: "I cannot see the share icon"). */
+function refreshShare() {
+  const shareable = !!editing && !editingIsNew && !!(editing.coord && (editing.resolvedName || editing.address));
+  el.placeShare.hidden = !shareable;
+  el.placeShare.setAttribute("aria-label", t().share);
 }
 
 function canSave() {
