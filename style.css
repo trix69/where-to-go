@@ -92,16 +92,33 @@ body {
   position: fixed;
   inset: 0;
   z-index: 50;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
   background: var(--bg);
+  overflow-y: auto;              /* a small phone with 特大 text still has to reach the button */
+  overscroll-behavior: contain;
 }
 .gate[hidden] { display: none; }
-.gate-box { max-width: 30rem; text-align: center; }
+/* auto margins centre the box when it fits and scroll it from the top when it does not */
+.gate-box { max-width: 30rem; margin: auto; text-align: center; }
 .gate-title { margin: 0 0 12px; font-size: var(--type-ask); font-weight: 700; line-height: 1.2; }
 .gate-msg { margin: 0 0 20px; font-size: 1.15rem; line-height: 1.45; color: var(--ink-soft); }
 .gate .go, .gate .back { max-width: 22rem; margin-left: auto; margin-right: auto; }
+
+/* The steps to grant permission, in the order the phone asks for them. Left-aligned and numbered: this is
+   read while the reader is looking at another screen (Settings), so the numbers have to carry them. */
+.gate-steps { margin: 18px 0 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px;
+  background: var(--card); text-align: left; }
+.gate-steps[hidden] { display: none; }
+.gate-steps-title { margin: 0 0 8px; font-weight: 700; color: var(--ink); }
+.gate-steps ol { margin: 0; padding-left: 1.3em; color: var(--ink-soft); line-height: 1.5; }
+.gate-steps li + li { margin-top: 6px; }
+
+/* Nothing behind the gate is reachable while it is up — not the tiles, not Settings, not the sheets. */
+body.gated main { pointer-events: none; user-select: none; }
+body.gated .sheet { display: none !important; }
 
 .app {
   max-width: 34rem;

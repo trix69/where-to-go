@@ -35,6 +35,25 @@ const COPY = {
     gateAllow: "Allow location",
     gateSkip: "Look around",
     gateRetry: "Check again",
+    locTitle: "Location needed",
+    locAsk: "This app needs your location to tell you how to get there.",
+    locPromptMsg: "Tap the button below and allow location.",
+    locDeniedMsg: "Location is off for this app. Turn it on with the steps below, then come back and tap Try again.",
+    locNoFixMsg: "Your phone has not given a location yet. Move near a window or outside, then try again.",
+    locRetry: "Try again",
+    locIosTitle: "On iPhone or iPad",
+    locIos1: "Open Settings",
+    locIos2: "Tap Privacy & Security, then Location Services, and turn it on",
+    locIos3: "Scroll to Safari (or Where To Go) and choose While Using the App",
+    locIos4: "Come back here and tap Try again",
+    locAndroidTitle: "On Android",
+    locAndroid1: "Open Settings, then Apps, then Chrome (or Where To Go)",
+    locAndroid2: "Tap Permissions, then Location, then Allow",
+    locAndroid3: "Come back here and tap Try again",
+    locOtherTitle: "In this browser",
+    locOther1: "Click the lock beside the address",
+    locOther2: "Set Location to Allow",
+    locOther3: "Reload this page",
     regionTitle: "Not here yet",
     regionMsg: "It only works in New South Wales, Australia.",
     storageWarn: "This browser isn't saving changes (private browsing?). Places will be lost when you close the tab.",
@@ -189,6 +208,25 @@ const COPY = {
     gateAllow: "允许定位",
     gateSkip: "先看看",
     gateRetry: "重新定位",
+    locTitle: "需要打开定位",
+    locAsk: "这个应用要用您的位置，才能告诉您怎么走。",
+    locPromptMsg: "点下面的按钮，允许使用位置。",
+    locDeniedMsg: "定位还没有打开。照着下面的步骤打开，再回来点「再试一次」。",
+    locNoFixMsg: "手机还没给出位置。请到窗边或室外，再试一次。",
+    locRetry: "再试一次",
+    locIosTitle: "在 iPhone 或 iPad 上",
+    locIos1: "打开手机的「设置」",
+    locIos2: "点「隐私与安全性」，再点「定位服务」，把它打开",
+    locIos3: "往下找到「Safari 浏览器」（或「想去哪儿」），选「使用 App 期间」",
+    locIos4: "回到这里，点「再试一次」",
+    locAndroidTitle: "在安卓手机上",
+    locAndroid1: "打开「设置」，点「应用」，找到 Chrome（或「想去哪儿」）",
+    locAndroid2: "点「权限」，再点「位置」，选「允许」",
+    locAndroid3: "回到这里，点「再试一次」",
+    locOtherTitle: "在这个浏览器里",
+    locOther1: "点地址栏左边的锁形图标",
+    locOther2: "把「位置」改成「允许」",
+    locOther3: "刷新这一页",
     regionTitle: "本地区还没开通",
     regionMsg: "这个应用目前只在澳大利亚新南威尔士州（NSW）可以使用。",
     storageWarn: "当前浏览器无法保存（无痕浏览？）。关闭后这些地点会丢失。",
@@ -577,6 +615,9 @@ const el = {
   gateMsg: $("gateMsg"),
   gateAllow: $("gateAllow"),
   gateSkip: $("gateSkip"),
+  gateSteps: $("gateSteps"),
+  gateStepsTitle: $("gateStepsTitle"),
+  gateStepList: $("gateStepList"),
   gear: $("settingsBtn"),
   tiles: $("tiles"),
   orderStatus: $("orderStatus"),
@@ -2143,14 +2184,77 @@ render();
 
 function closeGate() {
   el.gate.hidden = true;
+  setGateBlocking(false);
   // A shared link opens its draft as soon as the app is usable, behind the gate rather than under it.
   setTimeout(maybeOpenShared, 0);
 }
 
+/* While the gate is up, nothing behind it can be operated: not a tile, not the gear, not a sheet that was
+   somehow left open. Trix: "That overlay should block any operation to the app until the location service
+   is obtained." */
+function setGateBlocking(on) {
+  document.body.classList.toggle("gated", on);
+  const main = document.getElementById("app");
+  if (main) {
+    if (on) main.setAttribute("inert", "");
+    else main.removeAttribute("inert");
+  }
+  if (on) {
+    for (const sheet of document.querySelectorAll(".sheet")) sheet.hidden = true;
+  }
+}
+
 let gateMode = "check";
+
+let permState = async () => {
+  try { return (await navigator.permissions.query({ name: "geolocation" })).state; }
+  catch { return "unknown"; }
+};
+
+/** Which steps a reader needs depends on the phone in their hand, not on the app. */
+function gateStepsFor(c) {
+  const ua = navigator.userAgent;
+  const ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (ios) return { title: c.locIosTitle, lines: [c.locIos1, c.locIos2, c.locIos3, c.locIos4] };
+  if (/Android/.test(ua)) return { title: c.locAndroidTitle, lines: [c.locAndroid1, c.locAndroid2, c.locAndroid3] };
+  return { title: c.locOtherTitle, lines: [c.locOther1, c.locOther2, c.locOther3] };
+}
+
+/**
+ * The blocking overlay. `state` is what the browser says about the permission, or "no-fix" when permission
+ * is granted but the phone has not produced a position.
+ */
+function locationGate(state) {
+  const c = t();
+  gateMode = "location";
+  setGateBlocking(true);
+  el.gate.hidden = false;
+  el.gateTitle.textContent = c.locTitle;
+  el.gateSkip.hidden = true;                       // there is no way past this, by design
+  el.gateAllow.hidden = false;
+  el.gateAllow.textContent = state === "prompt" ? c.gateAllow : c.locRetry;
+
+  if (state === "prompt") {
+    el.gateMsg.textContent = `${c.locAsk} ${c.locPromptMsg}`;
+    el.gateSteps.hidden = true;
+  } else {
+    el.gateMsg.textContent = state === "no-fix" ? c.locNoFixMsg : c.locDeniedMsg;
+    const steps = gateStepsFor(c);
+    el.gateStepsTitle.textContent = steps.title;
+    el.gateStepList.replaceChildren(...steps.lines.map((line) => {
+      const li = document.createElement("li");
+      li.textContent = line;
+      return li;
+    }));
+    el.gateSteps.hidden = false;
+  }
+  el.gateAllow.focus?.({ preventScroll: true });
+}
 
 function regionBlocked(c) {
   gateMode = "region";
+  setGateBlocking(true);
+  el.gate.hidden = false;
   el.gateTitle.textContent = c.regionTitle;
   el.gateMsg.textContent = c.regionMsg;
   el.gateAllow.hidden = true;
@@ -2162,6 +2266,8 @@ function regionBlocked(c) {
 
 function gateNeedsGesture(c) {
   gateMode = "check";
+  setGateBlocking(true);
+  el.gate.hidden = false;
   el.gateTitle.textContent = c.ask;
   el.gateMsg.textContent = c.locationOff;
   el.gateAllow.textContent = c.gateAllow;
@@ -2182,18 +2288,18 @@ function setRegionVerdict(v) {
 async function boot() {
   applyTheme();
   applySize();
+  setGateBlocking(true);          // blocked from the first frame: the check itself is not a licence to tap
   const c = t();
 
-  // A site-level refusal cannot be re-prompted, and it is not a reason to block the app: the
-  // traveller may still want the Maps hand-off.
-  let state0 = "prompt";
-  try {
-    state0 = (await navigator.permissions.query({ name: "geolocation" })).state;
-  } catch { /* the query is not implemented everywhere */ }
-  if (state0 === "denied") return closeGate();
+  /* Trix: "Seek location permission when user launch the app. If location permission is not obtained,
+     use an overlay to remind customer to follow the steps." So the launch asks, and a refusal is not
+     something the app can work around — every answer starts from where the person is standing. */
+  const state0 = await permState();
+  if (state0 === "denied") return locationGate("denied");
+  if (state0 === "prompt") return locationGate("prompt");
 
-  // Seen before: nothing to gate on, so the launch is instant. Gating every launch made a slow fix a
-  // ten-second blank screen and then blamed location for a timeout (R13.2).
+  // Permission is already granted: nothing to ask, so the launch stays instant. Gating every launch made
+  // a slow fix a ten-second blank screen and then blamed location for a timeout (R13.2).
   const known = regionVerdict();
   if (known === "in") return closeGate();
   if (known === "out") return regionBlocked(c);
@@ -2210,9 +2316,9 @@ async function boot() {
     setRegionVerdict("out");
     return regionBlocked(c);
   }
-  // No fix on a first run is not a reason to hold the tiles back. The answer path has its own, more
-  // accurate thing to say when someone actually taps a place.
-  closeGate();
+  // Permission is granted but the phone produced nothing: hold the app and say so, because every answer
+  // starts from where the person is standing.
+  locationGate("no-fix");
 }
 
 el.gateAllow.addEventListener("click", async () => {
@@ -2220,6 +2326,7 @@ el.gateAllow.addEventListener("click", async () => {
   el.gateMsg.textContent = c.gateChecking;
   el.gateAllow.hidden = true;
   el.gateSkip.hidden = true;
+  el.gateSteps.hidden = true;
   const loc = await askLocation({ maxAge: 0 });
   if (loc.coord) {
     myLocation = { coord: loc.coord, at: Date.now() };
@@ -2230,18 +2337,21 @@ el.gateAllow.addEventListener("click", async () => {
     setRegionVerdict("out");
     return regionBlocked(c);
   }
-  gateNeedsGesture(c);
+  // Ask the browser what happened, rather than guessing from the error: a refusal needs the steps, a
+  // granted permission with no fix needs "move near a window".
+  const state = await permState();
+  if (state === "granted") return locationGate("no-fix");
+  if (state === "denied") return locationGate("denied");
+  return locationGate("prompt");
 });
 
 el.gateSkip.addEventListener("click", () => {
-  if (gateMode === "region") {
-    // 重新定位: forget both the cached fix and the verdict, then check again.
-    myLocation = null;
-    setRegionVerdict("");
-    boot();
-    return;
-  }
-  closeGate();
+  // The only remaining use is "check again" after a region verdict: there is no path that walks past a
+  // missing location permission any more.
+  if (gateMode !== "region") return;
+  myLocation = null;
+  setRegionVerdict("");
+  boot();
 });
 
 boot();

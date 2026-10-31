@@ -21,12 +21,21 @@
 </head>
 <body>
 
-<section class="gate" id="gate" aria-live="polite">
+<!-- The location gate. Trix: "If location permission is not obtained, use an overlay to remind customer
+     to follow the steps to grant that permission. That overlay should block any operation to the app
+     until the location service is obtained." There is no way past it: no skip, no outside tap, no Escape. -->
+<section class="gate" id="gate" role="dialog" aria-modal="true" aria-live="polite" aria-labelledby="gateTitle">
   <div class="gate-box">
     <p class="gate-title" id="gateTitle">想去哪儿?</p>
     <p class="gate-msg" id="gateMsg">正在确认位置…</p>
+    <!-- The action comes before the steps: on a small screen the button must be reachable without
+         scrolling, and the steps are the help you read if it does not work. -->
     <button class="go" id="gateAllow" type="button" hidden>允许定位</button>
     <button class="back" id="gateSkip" type="button" hidden>先看看</button>
+    <div class="gate-steps" id="gateSteps" hidden>
+      <p class="gate-steps-title" id="gateStepsTitle"></p>
+      <ol id="gateStepList"></ol>
+    </div>
   </div>
 </section>
 
