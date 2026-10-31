@@ -920,6 +920,11 @@ function askOnce(maxAge) {
  */
 async function askLocation(opts = {}) {
   const maxAge = opts.maxAge == null ? 60000 : opts.maxAge;
+  /* Permission can be taken away while the app is open — on iOS it is usually taken away in Settings and
+     the person comes straight back. Any refusal, wherever it is asked from, raises the blocking overlay
+     (Trix: "If the location permission got disabled or revoked during middle of the app usage, display
+     that overlay the same way"). */
+  if (!gateAskInFlight && !el.gate.hidden && gateMode === "location") return { error: "denied" };
   // The stamp is the point: without it a launch-time fix was reused for the whole page session, so a
   // trip asked 4 km away was still computed from where the phone was when the app opened (R16.1).
   if (myLocation && myLocation.coord && maxAge > 0 && Date.now() - (myLocation.at || 0) < maxAge) return myLocation;
@@ -2205,6 +2210,8 @@ function setGateBlocking(on) {
 }
 
 let gateMode = "check";
+/* The gate's own 再试一次 has to be able to ask while the gate is up; everything else is refused. */
+let gateAskInFlight = false;
 
 let permState = async () => {
   try { return (await navigator.permissions.query({ name: "geolocation" })).state; }
@@ -2276,6 +2283,31 @@ function gateNeedsGesture(c) {
   el.gateSkip.hidden = false;
 }
 
+/**
+ * Permission revoked mid-use.
+ *
+ * Two hooks, because the one that fires differs by platform: the Permissions API reports `change` in
+ * Chrome, and on iOS the usual path is Settings and back, which is a visibility change. Whichever notices
+ * "denied" raises the same overlay the launch uses — and drops the cached fix, so nothing travels from a
+ * position the person has just withdrawn.
+ */
+async function permissionRevoked() {
+  if (!el.gate.hidden && gateMode === "location") return;
+  const state = await permState();
+  if (state !== "denied") return;
+  myLocation = null;
+  locationGate("denied");
+}
+
+async function watchPermission() {
+  try {
+    const status = await navigator.permissions.query({ name: "geolocation" });
+    status.onchange = () => { if (status.state === "denied") permissionRevoked(); };
+  } catch { /* no Permissions API: the visibility and focus checks below cover it */ }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) permissionRevoked(); });
+  window.addEventListener("focus", () => permissionRevoked());
+}
+
 /* What the last region check concluded, so a launch does not pay for the same answer twice. */
 const REGION_KEY = "whereToGo.region.v1";   // rewritten for the test build, like STORE
 function regionVerdict() {
@@ -2327,7 +2359,9 @@ el.gateAllow.addEventListener("click", async () => {
   el.gateAllow.hidden = true;
   el.gateSkip.hidden = true;
   el.gateSteps.hidden = true;
+  gateAskInFlight = true;
   const loc = await askLocation({ maxAge: 0 });
+  gateAskInFlight = false;
   if (loc.coord) {
     myLocation = { coord: loc.coord, at: Date.now() };
     if (inNSW(loc.coord)) {
@@ -2355,5 +2389,6 @@ el.gateSkip.addEventListener("click", () => {
 });
 
 boot();
+watchPermission();
 
 render();
