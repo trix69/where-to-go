@@ -2007,13 +2007,25 @@ function placeNamePencil() {
   if (!editing || el.place.hidden || !el.namePencil) return;
   const input = el.placeName;
   const cs = getComputedStyle(input);
-  if (!pencilCtx) pencilCtx = document.createElement("canvas").getContext("2d");
-  pencilCtx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
   const text = input.value || "";
-  const padLeft = parseFloat(cs.paddingLeft) || 0;
-  const room = Math.max(0, input.clientWidth - 40 - 24);     // never let it run past the field
-  const width = text ? Math.min(pencilCtx.measureText(text).width, room) : 0;
-  el.namePencil.style.left = `${Math.round(padLeft + width + (text ? 9 : 5))}px`;
+  /* An empty field shows its placeholder, and the placeholder starts exactly where a pencil "at the
+     caret" would be — so the two glyphs landed on top of each other (Trix: "The edit icon is overlapping
+     with the hint text"). With nothing to edit there is nothing for the pencil to point at; the field's
+     own placeholder already invites the name. It appears with the first character typed. */
+  el.namePencil.hidden = !text;
+  input.classList.toggle("has-pencil", !!text);
+  if (!text) return;
+  if (!pencilCtx) pencilCtx = document.createElement("canvas").getContext("2d");
+  const padded = getComputedStyle(input);                    // re-read: the class above changed padding
+  pencilCtx.font = `${padded.fontStyle} ${padded.fontWeight} ${padded.fontSize} ${padded.fontFamily}`;
+  const padLeft = parseFloat(padded.paddingLeft) || 0;
+  const padRight = parseFloat(padded.paddingRight) || 0;
+  /* The field reserves the pencil's own width (`.has-pencil`), so a name too long for the row is clipped
+     before the glyph instead of running underneath it — measured with 皇家阿尔弗雷德王子医院 at 特大, where
+     the old clamp parked the pencil on the last characters. */
+  const textArea = Math.max(0, input.clientWidth - padLeft - padRight);
+  const width = Math.min(pencilCtx.measureText(text).width, textArea);
+  el.namePencil.style.left = `${Math.round(padLeft + width + 9)}px`;
 }
 
 el.placeName.addEventListener("input", () => {

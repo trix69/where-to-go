@@ -1101,3 +1101,8 @@ html[data-short="1"][data-size="xl"] .tile {
 }
 html[data-short="1"][data-size="xl"] .tile .face { font-size: 1.9rem; }
 html[data-short="1"][data-size="xl"] .bar { margin-bottom: 12px; }
+
+/* The rename pencil sits after the name, so the field keeps room for it: a name longer than the row is
+   clipped before the glyph rather than running under it (Trix: "The edit icon is overlapping with the
+   hint text" — first the placeholder, then any name long enough to reach the edge). */
+#placeName.has-pencil { padding-right: 40px; }
