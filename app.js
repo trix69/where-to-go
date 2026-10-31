@@ -173,15 +173,19 @@ const COPY = {
       "Open this page in Safari.",
       "Tap the Share button.",
       "Scroll down and tap Add to Home Screen.",
+      /* Trix: "remind the user to disable Add as Web App when they add the app into the home screen."
+         With that switch on, iOS opens the icon as its own window with no address bar — which is the
+         installed app this project deliberately no longer is. */
+      "Turn off Open as Web App.",
       "Tap Add.",
     ],
     stepsAndroid: [
       "Open this page in Chrome.",
       "Tap the three dots at the top right.",
-      "Tap Add to Home screen.",
+      "Tap Add to Home screen — not Install app.",
       "Tap Add to confirm.",
     ],
-    homeNote: "The icon opens the page in your browser — that is what lets a shared link work.",
+    homeNote: "The icon is a bookmark: tapping it opens this page in your browser.",
     orderTitle: "Order of places",
     orderRow: "Order",
     moveUp: "Move up",
@@ -381,15 +385,16 @@ const COPY = {
       "用 Safari 打开这个网页。",
       "点下面的「分享」按钮。",
       "往下滑，点「添加到主屏幕」。",
+      "把「作为 Web App 打开」关掉。",
       "点右上角的「添加」。",
     ],
     stepsAndroid: [
       "用 Chrome 打开这个网页。",
       "点右上角的三个点。",
-      "点「添加到主屏幕」。",
+      "点「添加到主屏幕」，不要点「安装应用」。",
       "再点一次「添加」。",
     ],
-    homeNote: "图标在浏览器里打开这一页，别人发来的链接才能用。",
+    homeNote: "图标就是这一页的书签，点开就在浏览器里。",
     orderTitle: "排列顺序",
     orderRow: "排列顺序",
     moveUp: "上移",
@@ -1210,7 +1215,7 @@ function openInstall() {
   // The icon drawn beside a step is the button the step tells them to tap, so it sits on the step
   // that names it and nowhere else.
   // The plus belongs on the step that names 添加, not on the one that opens the share sheet (R38.1).
-  fillSteps(el.stepsIos, c.stepsIos, [null, ICON_SHARE, null, ICON_ADD]);
+  fillSteps(el.stepsIos, c.stepsIos, [null, ICON_SHARE, null, null, ICON_ADD]);
   fillSteps(el.stepsAndroid, c.stepsAndroid, [null, ICON_MENU, null, ICON_ADD]);
   el.stepsIos.hidden = device !== "ios";
   el.stepsAndroid.hidden = device !== "android";

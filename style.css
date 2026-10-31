@@ -772,7 +772,11 @@ html[data-size="xl"] .order-face { display: none; }
    a surprise. Decorative — the heading says the words. */
 .install-mark { display: block; width: 72px; height: 72px; margin: 4px auto 10px; border-radius: 16px; }
 #install .panel { display: flex; flex-direction: column; }
-#install .steps { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+/* The steps are the whole point of this sheet, and `flex: 0 1 auto; min-height: 0` let them collapse to
+   0 px on a short window — measured: the list 0 px tall with five 56 px rows stacked behind the note, so
+   the instructions were unreachable while 完成 stayed pinned. They now take the leftover space and scroll,
+   with a floor that always shows at least one step. */
+#install .steps { flex: 1 1 auto; min-height: 88px; overflow-y: auto; }
 #install .sheet-title, #install .seg, #install .steps-note, #install .go { flex: 0 0 auto; }
 
 
