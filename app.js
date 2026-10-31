@@ -123,6 +123,7 @@ const COPY = {
     needAddress: "Add an address first.",
     noOrigin: "Add a starting place first.",
     share: "Share this address",
+    moreBelow: "More below",
     shareTitle: "An address for Where To Go",
     shareBody: "Open this link and give the address a name of your own.",
     shareCopied: "Link copied",
@@ -329,6 +330,7 @@ const COPY = {
     needAddress: "请先填地址。",
     noOrigin: "请先填出发点。",
     share: "分享这个地址",
+    moreBelow: "下面还有",
     shareTitle: "想去哪儿 · 一个地址",
     shareBody: "打开链接，自己给它起个名字。",
     shareCopied: "链接已复制",
@@ -989,7 +991,19 @@ async function originFor() {
 function markCardOverflow() {
   const body = el.sheet.querySelector(".sheet-body");
   if (!body) return;
-  body.classList.toggle("more", body.scrollHeight - body.clientHeight > 8);
+  body.dataset.more = t().moreBelow;                     // R67.2: a CSS literal was invisible to the copy gate
+  if (!body.dataset.wired) {
+    body.dataset.wired = "1";
+    /* R67.1: the band used to stay pinned — and covering — after the card had ended. `more` is measured
+       once per paint so the layout never reflows; `end` follows the scroll, and only it hides the band. */
+    body.addEventListener("scroll", () => {
+      const room = body.scrollHeight - body.clientHeight - body.scrollTop;
+      body.classList.toggle("end", room <= 8);
+    }, { passive: true });
+  }
+  const over = body.scrollHeight - body.clientHeight > 8;
+  body.classList.toggle("more", over);
+  body.classList.toggle("end", !over || body.scrollHeight - body.clientHeight - body.scrollTop <= 8);
 }
 
 /**
@@ -1588,10 +1602,14 @@ async function sharePlace() {
   if (!editing || !editing.coord || editingIsNew) return;
   const c = t();
   const url = shareUrlFor(editing);
-  const label = String(editing.resolvedName || editing.address || "");
   try {
     if (typeof navigator.share === "function") {
-      await navigator.share({ title: c.shareTitle, text: label, url });
+      /* Trix: "The share function is sharing object not as URL. I need it share as a URL." The payload was
+         title + the street name + url, and every target renders those three fields its own way — the link
+         arrived as one more line of prose, or with the street name standing in for it. Send the link as
+         the *text*: it is the one field every target accepts (WeChat, Messages, Mail all take text, not
+         all of them take url), it survives as a single tappable line, and nothing else travels with it. */
+      await navigator.share({ text: url });
       return;
     }
     await navigator.clipboard.writeText(url);
