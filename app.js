@@ -1347,6 +1347,7 @@ const ICONS = [
   "🏥", "🏦", "⛪", "🕌", "🏛️", "🚉",
   "🛍️", "🧺", "🍜", "☕", "🎓", "🏋️",
   "💊", "📮", "🎯", "📍", "🧓", "🐕",
+  "🏊", "⚽",            // swimming, football — appended so no existing place's pool order moves
 ];
 
 let searchTimer = null;
