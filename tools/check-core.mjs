@@ -349,5 +349,57 @@ ok("a github.io referer still allowed when Origin is absent",
   ok("the copy table is not empty", en.size > 50, String(en.size));
 }
 
+/* Every function the app calls has to exist. `6a0122a` deleted `arrivalFirstAtXl` while its call site
+   stayed: the card threw on every paint, and `node --check` passed because the syntax is fine, the copy
+   gate passed because the keys were there, and the test build served a dead answer card (R70.1). A name
+   that is called but never declared is always a mistake in a single-file app like this one. */
+{
+  const src = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const blanked = src
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|\s)\/\/.*$/gm, " ")          // whole-line and trailing comments: "a locale we dropped (zh-Hant)" is not a call
+    /* strings and templates too: `translate3d(...)`, `scale(...)` and a drawn sentence with a bracket are
+       text, not calls, and reading them as calls is how this check would cry wolf until someone turned it
+       off. */
+    .replace(/`(?:[^`\\]|\\.)*`/g, '""')
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\\n]|\\.)*'/g, "''");
+  const declared = new Set([
+    ...[...blanked.matchAll(/^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]),
+    ...[...blanked.matchAll(/^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/gm)].map((m) => m[1]),
+    // names imported from transit.js and config.js are declared elsewhere on purpose
+    ...[...blanked.matchAll(/import\s*\{([^}]*)\}\s*from/g)].flatMap((m) =>
+      m[1].split(",").map((x) => x.trim().split(/\s+as\s+/).pop()).filter(Boolean)),
+    // object-literal methods (`dropped(item) {`, `render() {`) are definitions, not calls
+    ...[...blanked.matchAll(/^\s{2,}([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/gm)].map((m) => m[1]),
+    // callback parameters: `(resolve) =>`, `(a, b) =>`, `async (opts) =>`, `x =>`
+    ...[...blanked.matchAll(/\(([^()]*)\)\s*=>/g)].flatMap((m) =>
+      m[1].split(",").map((x) => x.trim().replace(/^\.\.\./, "").split(/[=\s]/)[0]).filter(Boolean)),
+  ]);
+  /* Everything the platform provides that this app is allowed to call by bare name. Kept short and
+     explicit: a name that has to be added here is a name somebody should look at. */
+  const platform = new Set([
+    "fetch", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame",
+    "cancelAnimationFrame", "addEventListener", "removeEventListener", "getComputedStyle", "matchMedia",
+    "structuredClone", "queueMicrotask", "btoa", "atob", "encodeURIComponent", "decodeURIComponent",
+    "parseInt", "parseFloat", "isNaN", "isFinite", "alert", "confirm", "prompt", "open", "Number",
+    "String", "Boolean", "Array", "Object", "Math", "Date", "JSON", "Map", "Set", "Promise", "URL",
+    "URLSearchParams", "Intl", "RegExp", "Error", "TypeError", "Response", "Request", "Headers", "Blob",
+    "AbortController", "TextEncoder", "TextDecoder", "CustomEvent", "Event", "Node", "Element", "if",
+    "for", "while", "switch", "catch", "return", "typeof", "function", "await", "case", "do", "else",
+    "try", "new", "delete", "void", "in", "of", "instanceof", "yield", "super", "import", "constructor",
+    "async",
+  ]);
+  const ignored = new Set([...declared, ...platform]);
+  const called = [...blanked.matchAll(/(?<![.\w$])([a-z_$][\w$]*)\s*\(/g)];
+  const unknown = [...new Set(called.map((m) => m[1]))].filter((n) => !ignored.has(n));
+  const where = unknown.slice(0, 6).map((n) => {
+    const i = called.find((m) => m[1] === n).index;
+    const line = blanked.slice(0, i).split("\n").length;
+    return `${n} (app.js:${line})`;
+  });
+  ok("every function app.js calls is declared or a platform name", unknown.length === 0, where.join(", "));
+}
+
 console.log(failures ? `\n${failures} failed` : "\nall passed");
 process.exit(failures ? 1 : 0);

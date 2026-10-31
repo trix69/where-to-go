@@ -993,6 +993,25 @@ async function originFor() {
  * a sticky band, so it stays at the bottom edge while the card is scrolled rather than scrolling away
  * with the first line.
  */
+/**
+ * At 特大 the card can be taller than a short phone, and the door arrival — the number this app exists to
+ * print — is its last line. Trix's call: at 特大 only, put that line first, so it is above the fold
+ * without anyone having to discover a scroll hint. The order everywhere else is unchanged, and a card
+ * that does not end in an arrival line is left alone.
+ *
+ * The door line is decided by COPY.doorEnd, not by a Chinese regex, because the app ships two languages
+ * and only one of them ends a card with 到。 (R67.5). R70.1: this function was deleted by the commit that
+ * replaced the band below while its call site stayed — the card threw on every paint.
+ */
+function arrivalFirstAtXl(text) {
+  if (document.documentElement.dataset.size !== "xl") return text;
+  const c = t();
+  const lines = String(text).split("\n").filter((l) => l.trim());
+  if (lines.length < 3) return text;
+  if (!c.doorEnd || !c.doorEnd.test(lines[lines.length - 1].trim())) return text;
+  return [lines[lines.length - 1], ...lines.slice(0, -1)].join("\n");
+}
+
 let cardOverflowWired = false;
 function markCardOverflow() {
   const body = el.sheet.querySelector(".sheet-body");
@@ -1021,7 +1040,10 @@ function markCardOverflow() {
      band still shown). One forced layout per paint or resize, never per scroll frame. */
   band.hidden = true;
   const over = body.scrollHeight - body.clientHeight > 8;
-  band.hidden = !over;
+  /* R70.3: the card repaints every 60 s, and a repaint runs this again — which used to put the band back
+     over the arrival line for a reader already parked at the end. The remaining room is part of the test,
+     not only the total overflow. */
+  band.hidden = !over || body.scrollHeight - body.clientHeight - body.scrollTop <= 8;
 }
 
 async function openAnswer(place, opts = {}) {
