@@ -59,7 +59,7 @@ const COPY = {
       const platform = /^\d+[A-Za-z]?$/.test(String(t.boardPlatform || "")) ? `platform ${t.boardPlatform}` : "";
       const departs = t.departISO ? clock(t.departISO) : "";
       const service = [`${head}${way}`, platform, `in ${t.waitMin} min`, departs ? `departs ${departs}` : ""]
-        .filter(Boolean).join(" · ");
+        .filter(Boolean).join(", ");
       const stopRaw = t.alightISO ? clock(t.alightISO) : "";
       const stopAt = t.alightISO ? clockAfter(t.departISO, t.alightISO) : "";
       const doorAt = arrive && clock(t.arriveISO) !== stopRaw
@@ -224,7 +224,7 @@ const COPY = {
       // An unmapped mode says nothing rather than borrowing the train's verb (R37.1).
       const verb = ({ bus: "到站", coach: "到站", lightrail: "到站", metro: "到站", train: "发车", ferry: "开船" })[t.mode] || "";
       const service = [`${line}${way}`, platform,
-        `${t.waitMin}分钟后${verb}${departs ? `（${departs}）` : ""}`].filter(Boolean).join(" · ");
+        `${t.waitMin}分钟后${verb}${departs ? `（${departs}）` : ""}`].filter(Boolean).join("，");
 
       // The first clock that crosses midnight carries 次日; a later clock on the same day needs nothing
       // (R37.5). The raw clocks decide whether the stop and the door are the same instant.
