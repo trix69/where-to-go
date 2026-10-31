@@ -1064,3 +1064,20 @@ html[data-size="xl"] .order-face { display: none; }
   font-size: max(1.1rem, 18px);
   cursor: pointer;
 }
+
+/* A card taller than the sheet says so (R66.1). Sticky, so the band sits at the bottom edge while the
+   card scrolls under it; the gradient is what makes it read as "continues" rather than as a last line.
+   Toggled by markCardOverflow() from the measured overflow, so it never appears on a card that fits. */
+#sheet .sheet-body.more::after {
+  content: "下面还有";
+  position: sticky;
+  bottom: 0;
+  display: block;
+  padding: 20px 0 6px;
+  margin-top: -6px;
+  text-align: center;
+  font-size: max(1rem, 17px);
+  color: var(--ink-soft);
+  background: linear-gradient(to bottom, rgba(251, 250, 247, 0) 0%, var(--bg) 60%);
+  pointer-events: none;
+}

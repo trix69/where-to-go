@@ -979,11 +979,25 @@ async function originFor() {
     : { error: loc.error, code: loc.code, perm: loc.perm };
 }
 
+/**
+ * A card taller than the sheet has to say so. At 特大 on a 667 px phone a two-vehicle answer runs 392 px
+ * past the body, and the arrival — the number this app exists to print — is the last line: an elderly
+ * reader can take the vehicle line for the answer and never learn when they arrive (R66.1). The hint is
+ * a sticky band, so it stays at the bottom edge while the card is scrolled rather than scrolling away
+ * with the first line.
+ */
+function markCardOverflow() {
+  const body = el.sheet.querySelector(".sheet-body");
+  if (!body) return;
+  body.classList.toggle("more", body.scrollHeight - body.clientHeight > 8);
+}
+
 async function openAnswer(place, opts = {}) {
   const c = t();
   const refresh = opts.refresh === true;
   currentPlace = place;
   show("answer");
+  requestAnimationFrame(markCardOverflow);
   el.sheetTitle.textContent = nameOf(place);
   if (!refresh) {
     el.summary.textContent = c.locating;
@@ -1035,6 +1049,7 @@ async function openAnswer(place, opts = {}) {
       mode = trip.mode;
       // Standing at the destination is not a failed lookup: there is no bus to name.
       el.summary.textContent = trip.arrived ? c.arrived : c.trip(trip, clock(trip.arriveISO));
+      markCardOverflow();
       // Anything that is not the live provider gets said out loud, in the answer card.
       if (trip.provider !== "tfnsw" && trip.provider !== "nearby") {
         el.stamp.textContent = c.demo;
@@ -1069,6 +1084,7 @@ const SIZES = ["sm", "md", "lg", "xl"];
 
 function applySize() {
   document.documentElement.dataset.size = SIZES.includes(state.fontSize) ? state.fontSize : "md";
+  requestAnimationFrame(markCardOverflow);   // a bigger text size can push the card past the sheet
   placeNamePencil();                 // the name is set larger or smaller, and the pencil follows it
 }
 
@@ -1734,8 +1750,9 @@ function renderMap() {
 
 /**
  * What is under the pin, in the order a person thinks: the place's name first (MarketPlace Leichhardt),
- * the street beneath it (Flood Street, Leichhardt) — the name is what gets stored, the street is the
- * receipt. With no name there is one line; with nothing there it says so.
+ * the street beneath it (Flood Street, Leichhardt). The name is what the person sees while aiming; the
+ * street is what gets stored (R59 reversed R58 on that). With no name there is one line; with nothing
+ * there it says so.
  */
 function renderMapAddr(hit) {
   el.mapAddr.replaceChildren();
@@ -1854,6 +1871,21 @@ async function useMapPoint() {
     editing.address = nameOfPoint;
     editing.resolvedName = nameOfPoint;
     el.placeAddr.value = nameOfPoint;
+  } else if ((editing.address || el.placeAddr.value || "").trim()) {
+    /* The 1.2 s race was lost, not the address (R66.2). Keep what the sheet already had, and ask again
+       for the point just taken so the label eventually matches the coordinate — silently deleting a
+       street the place already carried is the worse failure. */
+    const later = ++mapReverseSeq;
+    reverseAddress(mapView.lat, mapView.lng).then((again) => {
+      if (later !== mapReverseSeq || !editing || el.place.hidden) return;
+      const street = again && (again.street || again.name) ? again.street || again.name : "";
+      if (!street) return;
+      editing.address = street;
+      editing.resolvedName = street;
+      el.placeAddr.value = street;
+      if (!editingIsNew) { save(); render(); }
+      refreshDone();
+    });
   } else {
     // No street name at this point: the coordinate is the answer, and the field must not keep text
     // that names somewhere else.
