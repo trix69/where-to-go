@@ -1084,3 +1084,16 @@ html[data-size="xl"] .order-face { display: none; }
   background: linear-gradient(to bottom, rgba(251, 250, 247, 0) 0%, var(--bg) 62%);
   pointer-events: none;
 }
+
+/* R71.1: in a browser the launch screen is shorter than the screen, and at 特大 the six presets ran 71 px
+   past a 579 px viewport (rows 98-279 / 293-464 / 478-650, measured 375x579). The attribute comes from
+   visualViewport.height in applyViewportFit(), because vh and media queries both measure the large
+   viewport and would not fire on the phone this is for. Only 特大 and only a short viewport: 中 already
+   fits, and a tall phone keeps its full-size tiles. */
+html[data-short="1"][data-size="xl"] .tile {
+  min-height: 0;
+  padding: 14px 16px;
+  gap: 6px;
+}
+html[data-short="1"][data-size="xl"] .tile .face { font-size: 1.9rem; }
+html[data-short="1"][data-size="xl"] .bar { margin-bottom: 12px; }

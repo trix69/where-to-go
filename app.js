@@ -987,13 +987,6 @@ async function originFor() {
 }
 
 /**
- * A card taller than the sheet has to say so. At 特大 on a 667 px phone a two-vehicle answer runs 392 px
- * past the body, and the arrival — the number this app exists to print — is the last line: an elderly
- * reader can take the vehicle line for the answer and never learn when they arrive (R66.1). The hint is
- * a sticky band, so it stays at the bottom edge while the card is scrolled rather than scrolling away
- * with the first line.
- */
-/**
  * At 特大 the card can be taller than a short phone, and the door arrival — the number this app exists to
  * print — is its last line. Trix's call: at 特大 only, put that line first, so it is above the fold
  * without anyone having to discover a scroll hint. The order everywhere else is unchanged, and a card
@@ -1012,6 +1005,13 @@ function arrivalFirstAtXl(text) {
   return [lines[lines.length - 1], ...lines.slice(0, -1)].join("\n");
 }
 
+/**
+ * A card taller than the sheet has to say so. At 特大 on a 667 px phone a two-vehicle answer runs 392 px
+ * past the body, and the arrival — the number this app exists to print — is the last line: an elderly
+ * reader can take the vehicle line for the answer and never learn when they arrive (R66.1). The hint is
+ * a sticky band, so it stays at the bottom edge while the card is scrolled rather than scrolling away
+ * with the first line.
+ */
 let cardOverflowWired = false;
 function markCardOverflow() {
   const body = el.sheet.querySelector(".sheet-body");
@@ -1137,8 +1137,21 @@ async function openAnswer(place, opts = {}) {
 
 const SIZES = ["sm", "md", "lg", "xl"];
 
+/**
+ * A browser viewport is shorter than the screen: Safari subtracts its bars, and `vh` *and* `@media
+ * (max-height: …)` both measure the large viewport, so a CSS-only gate would never fire on the phone it
+ * was written for. `visualViewport.height` is the height actually on screen, so the layout is keyed off
+ * that (R71.1). Below 640 px at 特大 the six presets do not fit, and on the launch screen the thing to give
+ * up is padding and glyph size, not the last row of places.
+ */
+function applyViewportFit() {
+  const h = (window.visualViewport && window.visualViewport.height) || innerHeight;
+  document.documentElement.dataset.short = h < 640 ? "1" : "0";
+}
+
 function applySize() {
   document.documentElement.dataset.size = SIZES.includes(state.fontSize) ? state.fontSize : "md";
+  applyViewportFit();
   markCardOverflow();                        // a bigger text size can push the card past the sheet
   placeNamePencil();                 // the name is set larger or smaller, and the pencil follows it
 }
@@ -2423,6 +2436,22 @@ function regionVerdict() {
 }
 function setRegionVerdict(v) {
   try { localStorage.setItem(REGION_KEY, v); } catch { /* private mode: the gate just re-checks */ }
+}
+
+/* R71.1: the launch screen is the screen this is for, and it never paints a card, so its measurement
+   cannot live behind the answer card's wiring. Wired here, once, at load. */
+applyViewportFit();
+/* A `resize` event can arrive while the metrics still report the old height — measured: growing the frame
+   579 -> 800 updated the gate, shrinking it 800 -> 579 left it stale, and no second event came. So the
+   handler measures twice: now, and once more after layout has settled. A ResizeObserver on
+   documentElement does not help here — the element's box follows the content, not the viewport. */
+const refreshViewportFit = () => {
+  applyViewportFit();
+  setTimeout(applyViewportFit, 150);
+};
+addEventListener("resize", refreshViewportFit);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", refreshViewportFit);   // the bars collapsing is not a resize
 }
 
 async function boot() {
