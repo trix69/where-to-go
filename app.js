@@ -992,6 +992,21 @@ function markCardOverflow() {
   body.classList.toggle("more", body.scrollHeight - body.clientHeight > 8);
 }
 
+/**
+ * At 特大 the card can be taller than a short phone, and the door arrival — the number this app exists
+ * to print — is its last line. Trix's call: at 特大 only, put that line first, so it is above the fold
+ * without anyone having to discover a scroll hint. The order everywhere else is unchanged, and a card
+ * that does not end in an arrival line is left alone.
+ */
+function arrivalFirstAtXl(text) {
+  if (document.documentElement.dataset.size !== "xl") return text;
+  const lines = String(text).split("\n").filter((l) => l.trim());
+  if (lines.length < 3) return text;
+  const last = lines[lines.length - 1];
+  if (!/到。$/.test(last.trim())) return text;      // only the door line moves
+  return [last, ...lines.slice(0, -1)].join("\n");
+}
+
 async function openAnswer(place, opts = {}) {
   const c = t();
   const refresh = opts.refresh === true;
@@ -1048,7 +1063,8 @@ async function openAnswer(place, opts = {}) {
       if (seq !== lookSeq) return;
       mode = trip.mode;
       // Standing at the destination is not a failed lookup: there is no bus to name.
-      el.summary.textContent = trip.arrived ? c.arrived : c.trip(trip, clock(trip.arriveISO));
+      el.summary.textContent = trip.arrived ? c.arrived
+        : arrivalFirstAtXl(c.trip(trip, clock(trip.arriveISO)));
       markCardOverflow();
       // Anything that is not the live provider gets said out loud, in the answer card.
       if (trip.provider !== "tfnsw" && trip.provider !== "nearby") {
