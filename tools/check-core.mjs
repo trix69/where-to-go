@@ -287,15 +287,20 @@ ok("a github.io referer still allowed when Origin is absent",
 
 /* A top-level binding whose name is also a browser global shadows it for the whole file, and the call
    that breaks is silent: `location.replace()` became "not a function" because `let location` held the
-   geolocation fix, so 检查更新 told Trix 这里查不到 on every installed copy since 0.1 (2026-10-31). */
+   geolocation fix, so 检查更新 told Trix 这里查不到 on every installed copy since 0.1.
+ *
+ * The list of globals is data from a real browser (tools/browser-globals.json, 991 identifiers), not a
+ * hand-typed handful: the previous 31-name list passed `let fetch = null` and missed `let opener` in the
+ * shipped file (R52.1, R52.2). */
 {
   const src = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const { names: globals } = JSON.parse(readFileSync(new URL("./browser-globals.json", import.meta.url), "utf8"));
   const reserved = new Set("let const var function class async await if else for while return new typeof import export default switch case break continue do try catch finally throw in of delete void this super extends static get set true false null undefined".split(" "));
-  const names = [...src.matchAll(/^(?:async\s+function|let|const|var|function|class)\s+([A-Za-z_$][\w$]*)/gm)]
+  const named = [...src.matchAll(/^(?:async\s+function|let|const|var|function|class)\s+([A-Za-z_$][\w$]*)/gm)]
     .map((m) => m[1]).filter((n) => !reserved.has(n));
-  const globals = new Set("location history screen status name top parent frames self window document navigator console origin close open focus blur print stop event length external menubar toolbar scrollbars innerWidth innerHeight outerWidth outerHeight devicePixelRatio".split(" "));
-  const clashes = [...new Set(names)].filter((n) => globals.has(n));
-  ok("app.js shadows no browser global at top level", clashes.length === 0, clashes.join(", "));
+  const set = new Set(globals);
+  const clashes = [...new Set(named)].filter((n) => set.has(n));
+  ok(`app.js shadows no browser global at top level (${set.size} globals checked)`, clashes.length === 0, clashes.join(", "));
 }
 
 /* Reverse geocoding: the map pin's label. Nominatim, because TfNSW's coord endpoint answers

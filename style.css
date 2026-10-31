@@ -479,10 +479,23 @@ body.gated .sheet { display: none !important; }
    (R43.4). The destination is the place the reader named themselves and line 1 already says where the
    trip goes, so it is the line that gives way. */
 html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
+/* R43.4 gave way the destination at 特大; the sentence is the long part of a two-vehicle answer, and at
+   特大 it ran 91 px past the body, behind the pinned 打开地图. Tighter leading plus dropping the
+   destination line (the sheet title already names the place) brings the same card from 563 px to 433
+   against 472 available (R51.1). */
+html[data-size="xl"] .summary { line-height: 1.2; }
+html[data-size="xl"] #destAddr { display: none; }
 
 /* The order list: one row per place, a name and two arrows. The arrows are the largest thing in the row
    because they are the only thing to tap. */
-.order-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);   /* the longest name must not size every row (R50.1) */
+}
 .order-row {
   display: flex;
   align-items: center;
@@ -494,11 +507,11 @@ html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
   background: var(--card);
 }
 .order-face { font-size: 1.6rem; line-height: 1; }
-.order-name { flex: 1 1 auto; font-size: var(--type); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-name { flex: 1 1 auto; min-width: 0; font-size: var(--type); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arrow {
   flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
+  width: 56px;                 /* PROJECT.md §6: 56 pt minimum, and every other control meets it (R50.3) */
+  height: 56px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--bg);
@@ -510,6 +523,10 @@ html[data-size="xl"] .dest { max-height: 1.35em; overflow: hidden; }
 }
 .arrow:disabled { opacity: 0.35; cursor: default; }
 .arrow:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* At 特大 the emoji is the first thing to give way: it is decorative (aria-hidden) and the arrows are
+   not. Without this the 56 px arrows plus the name leave 137 px for the name (R50.3). */
+html[data-size="xl"] .order-face { display: none; }
+
 /* Same split as every other dialog: the list scrolls, 完成 does not. */
 #order { align-items: center; padding: 24px; }
 #order .panel { border-radius: 20px; display: flex; flex-direction: column; }

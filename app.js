@@ -813,20 +813,26 @@ function openOrder() {
 }
 
 /* Focus follows the place being moved, so a second tap on the same arrow keeps working after the list is
- * rebuilt — without this, every move would drop focus back to the dialog title. */
+ * rebuilt. At either end that arrow is now disabled and cannot take focus, so the opposite one does — the
+ * direction a person wants next is the one that still moves (R50.2). */
 function refocus(id, dir) {
-  el.orderList.querySelector(`li[data-id="${id}"] .arrow.${dir}`)?.focus();
+  const row = el.orderList.querySelector(`li[data-id="${id}"]`);
+  if (!row) return;
+  const same = row.querySelector(`.arrow.${dir}`);
+  const other = row.querySelector(`.arrow.${dir === "up" ? "down" : "up"}`);
+  const target = same && !same.disabled ? same : other && !other.disabled ? other : row.querySelector(".order-name");
+  target?.focus?.();
 }
 
 /* Which control opened the dialog that is open now. A screen-reader user taps the 添加到主屏幕 row,
  * the row goes hidden underneath them, and nothing is announced — so the arriving dialog takes focus
  * and the closing dialog hands it back (R38.4). */
-let opener = null;
+let focusReturnTo = null;
 
 function show(which) {
   const wasOpen = !el.sheet.hidden || !el.manage.hidden || !el.place.hidden || !el.install.hidden
     || !el.icons.hidden || !el.order.hidden || !el.map.hidden;
-  if (which && !wasOpen) opener = document.activeElement;
+  if (which && !wasOpen) focusReturnTo = document.activeElement;
 
   el.sheet.hidden = which !== "answer";
   el.manage.hidden = which !== "manage";
@@ -843,9 +849,9 @@ function show(which) {
                    icons: el.icons, order: el.order, map: el.map }[which];
     const target = root && root.querySelector(".sheet-title[tabindex], [data-focus], .icons[tabindex]");
     target?.focus?.({ preventScroll: true });
-  } else if (opener && document.contains(opener)) {
-    opener.focus?.({ preventScroll: true });
-    opener = null;
+  } else if (focusReturnTo && document.contains(focusReturnTo)) {
+    focusReturnTo.focus?.({ preventScroll: true });
+    focusReturnTo = null;
   }
 }
 
@@ -2155,6 +2161,16 @@ el.verBtn.addEventListener("click", async () => {
     /* There is no service worker here, so a fresh navigation *is* the update. A check that cannot read
        the file reloads rather than dead-ending: 这里查不到 left Trix with no way forward from the home
        screen — one failed request and the app could never learn it was two versions behind. */
+    /* A failed read is not proof the site is reachable: `onLine` stays true in a dead spot or behind a
+       captive portal, and navigating would replace the app with the browser's own error page — on a
+       home-screen web clip there is no way back (R52.3). Ask for the page first. */
+    const reachable = await fetch(`${window.location.pathname}?probe=${stamp}`, { method: "HEAD", cache: "no-store" })
+      .then((r) => r.ok)
+      .catch(() => false);
+    if (!reachable) {
+      el.verMsg.textContent = c.offline;
+      return;
+    }
     el.verMsg.textContent = c.reloading;
     window.location.replace(`${window.location.pathname}?v=${stamp}`);
     return;
