@@ -1065,22 +1065,17 @@ html[data-size="xl"] .order-face { display: none; }
   cursor: pointer;
 }
 
-/* A card taller than the sheet says so (R66.1). Sticky, so the band sits at the bottom edge while the
-   card scrolls under it; the gradient is what makes it read as "continues" rather than as a last line.
-   Toggled by markCardOverflow() from the measured overflow, so it never appears on a card that fits. */
-#sheet .sheet-body.more::after {
-  content: attr(data-more);                       /* R67.2: the string lives in COPY, so both languages and the gate see it */
+/* A card taller than the sheet says so (R66.1). A real element rather than a ::after, because a
+   pseudo-element cannot be measured and its opacity would not move under the test harness — and because
+   hidden has to mean hidden. Sticky, so it sits at the bottom edge while the card scrolls under it. */
+#sheet .card-more {
   position: sticky;
   bottom: 0;
-  display: block;
-  padding: 10px 0 2px;                            /* R67.1: slimmer — it used to cover 55 px of a 312 px card */
-  margin-top: -4px;
+  margin: -4px 0 0;
+  padding: 10px 0 2px;
   text-align: center;
   font-size: max(0.95rem, 16px);
   color: var(--ink-soft);
   background: linear-gradient(to bottom, rgba(251, 250, 247, 0) 0%, var(--bg) 62%);
   pointer-events: none;
-  opacity: 1;
-  transition: opacity 0.15s ease;
 }
-#sheet .sheet-body.more.end::after { opacity: 0; }   /* R67.1: the card has ended — stop saying there is more */

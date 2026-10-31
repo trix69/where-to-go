@@ -124,6 +124,9 @@ const COPY = {
     noOrigin: "Add a starting place first.",
     share: "Share this address",
     moreBelow: "More below",
+    // R67.5: which line is the door line, in this language's own copy — the order at 特大 must not
+    // be decided by a Chinese regex for both languages.
+    doorEnd: /at the door\.$/,
     shareTitle: "An address for Where To Go",
     shareBody: "Open this link and give the address a name of your own.",
     shareCopied: "Link copied",
@@ -331,6 +334,7 @@ const COPY = {
     noOrigin: "请先填出发点。",
     share: "分享这个地址",
     moreBelow: "下面还有",
+    doorEnd: /到。$/,
     shareTitle: "想去哪儿 · 一个地址",
     shareBody: "打开链接，自己给它起个名字。",
     shareCopied: "链接已复制",
@@ -673,6 +677,7 @@ const el = {
   placeDel: $("placeDel"),
   placeDone: $("placeDone"),
   placeShare: $("placeShare"),
+  cardMore: $("cardMore"),
   toast: $("toast"),
   placeMap: $("placeMap"),
   placeMapLabel: $("placeMapLabel"),
@@ -988,37 +993,35 @@ async function originFor() {
  * a sticky band, so it stays at the bottom edge while the card is scrolled rather than scrolling away
  * with the first line.
  */
+let cardOverflowWired = false;
 function markCardOverflow() {
   const body = el.sheet.querySelector(".sheet-body");
-  if (!body) return;
-  body.dataset.more = t().moreBelow;                     // R67.2: a CSS literal was invisible to the copy gate
-  if (!body.dataset.wired) {
-    body.dataset.wired = "1";
-    /* R67.1: the band used to stay pinned — and covering — after the card had ended. `more` is measured
-       once per paint so the layout never reflows; `end` follows the scroll, and only it hides the band. */
+  if (!body || !el.cardMore) return;
+  const band = el.cardMore;
+  band.textContent = t().moreBelow;                 // R67.2: the string lives in COPY, so both languages see it
+  if (!cardOverflowWired) {
+    cardOverflowWired = true;
+    /* R67.6: a rotation changes the body's height, not the text, so the measurement has to run again. */
+    /* Called straight, not through requestAnimationFrame: an iframe (and a backgrounded tab) can throttle
+       rAF, and this measurement is one forced layout, not a per-frame loop — measured: the resize listener
+       fired but nothing changed until the handler was made synchronous. */
+    addEventListener("resize", () => markCardOverflow());
+    if (screen.orientation) {
+      screen.orientation.addEventListener("change", () => markCardOverflow());
+    }
+    /* R67.1: past the end there is nothing more to announce. The band is a real element, so hiding it is a
+       real measurement rather than a pseudo-element's caret. */
     body.addEventListener("scroll", () => {
       const room = body.scrollHeight - body.clientHeight - body.scrollTop;
-      body.classList.toggle("end", room <= 8);
+      band.hidden = room <= 8;
     }, { passive: true });
   }
+  /* Measure with the band hidden: it sits inside the scroller, so while it is visible its own ~36 px count
+     as overflow, and 36 > 8 kept the band alive on a card that fitted (measured: viewport 1400, overflow 0,
+     band still shown). One forced layout per paint or resize, never per scroll frame. */
+  band.hidden = true;
   const over = body.scrollHeight - body.clientHeight > 8;
-  body.classList.toggle("more", over);
-  body.classList.toggle("end", !over || body.scrollHeight - body.clientHeight - body.scrollTop <= 8);
-}
-
-/**
- * At 特大 the card can be taller than a short phone, and the door arrival — the number this app exists
- * to print — is its last line. Trix's call: at 特大 only, put that line first, so it is above the fold
- * without anyone having to discover a scroll hint. The order everywhere else is unchanged, and a card
- * that does not end in an arrival line is left alone.
- */
-function arrivalFirstAtXl(text) {
-  if (document.documentElement.dataset.size !== "xl") return text;
-  const lines = String(text).split("\n").filter((l) => l.trim());
-  if (lines.length < 3) return text;
-  const last = lines[lines.length - 1];
-  if (!/到。$/.test(last.trim())) return text;      // only the door line moves
-  return [last, ...lines.slice(0, -1)].join("\n");
+  band.hidden = !over;
 }
 
 async function openAnswer(place, opts = {}) {
@@ -1026,7 +1029,7 @@ async function openAnswer(place, opts = {}) {
   const refresh = opts.refresh === true;
   currentPlace = place;
   show("answer");
-  requestAnimationFrame(markCardOverflow);
+  markCardOverflow();
   el.sheetTitle.textContent = nameOf(place);
   if (!refresh) {
     el.summary.textContent = c.locating;
@@ -1114,7 +1117,7 @@ const SIZES = ["sm", "md", "lg", "xl"];
 
 function applySize() {
   document.documentElement.dataset.size = SIZES.includes(state.fontSize) ? state.fontSize : "md";
-  requestAnimationFrame(markCardOverflow);   // a bigger text size can push the card past the sheet
+  markCardOverflow();                        // a bigger text size can push the card past the sheet
   placeNamePencil();                 // the name is set larger or smaller, and the pencil follows it
 }
 
