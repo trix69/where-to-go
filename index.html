@@ -13,9 +13,10 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <!-- No service worker, by decision (PROJECT.md §7): this app is useless offline, so it does not pretend otherwise. -->
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<!-- Web app only, by Trix's decision (2026-10-31): an installed standalone copy cannot receive a shared
+     ?add= link — the share sheet hands over a URL, and an installed app is not what a URL opens. So the
+     home-screen entry is a bookmark: no mobile-web-app-capable, no apple-mobile-web-app-capable, and the
+     manifest says display: browser. The icon and its title stay, which is what a bookmark shows. -->
 <meta name="apple-mobile-web-app-title" content="Where To Go">
 <link rel="stylesheet" href="style.css?v=1.5">
 </head>

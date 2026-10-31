@@ -5,7 +5,7 @@
   "description": "One tap from your saved places to a plain-language transit answer.",
   "start_url": "./",
   "scope": "./",
-  "display": "standalone",
+  "display": "browser",
   "orientation": "portrait",
   "background_color": "#14532d",
   "theme_color": "#fbfaf7",

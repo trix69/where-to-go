@@ -220,6 +220,10 @@ body.gated .sheet { display: none !important; }
   width: 100%;
   max-width: 34rem;
   max-height: 88vh;
+  /* Web app only (Trix, 2026-10-31): with the page in a browser the URL bar is real height, and vh
+     measures the *large* viewport — so the panel could end under the toolbar with its CTA there. dvh is
+     the visible viewport; the vh line above is the fallback for a browser without it. */
+  max-height: 88dvh;
   overflow-y: auto;
   padding: 26px 20px calc(env(safe-area-inset-bottom) + 22px);
   border-radius: 26px 26px 0 0;
@@ -703,6 +707,7 @@ html[data-size="xl"] .order-face { display: none; }
      covers both buttons exactly when the helper needs them. */
   bottom: calc(100% + 6px);
   max-height: 46vh;
+  max-height: 46dvh;
   overflow-y: auto;
   margin: 0;
   padding: 6px;
